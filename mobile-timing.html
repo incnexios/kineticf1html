@@ -1,0 +1,801 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>KINETIC / MOBILE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+<style>
+:root{
+  --bg:#0a0a0c; --panel:#141418; --line:#26262e;
+  --text:#eceae4; --muted:#84838c; --amber:#ff9a1f; --cyan:#4fd8e8;
+  --red:#ff4d4f; --green:#4ade80; --purple:#b98cff; --yellow:#eab308; --blue:#3b82f6;
+  --sat-t:env(safe-area-inset-top,0px); --sat-b:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{height:100%; margin:0;}
+body{background:#000; color:var(--text); font-family:'JetBrains Mono',monospace; font-size:13px;}
+/* App frame: fluid edge-to-edge on real phone widths, letterboxed to a phone-proportioned
+   column on wider/desktop viewports so nothing stretches into giant, unreadable rows. */
+#app{position:relative; max-width:480px; margin:0 auto; height:100%; max-height:100dvh; overflow:hidden; background:var(--bg); padding-top:var(--sat-t);}
+@media (min-width:481px){ #app{box-shadow:0 0 0 1px var(--line), 0 20px 60px rgba(0,0,0,.6);} }
+header{display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-bottom:1px solid var(--line); background:var(--panel);}
+.brand{display:flex; align-items:baseline; gap:6px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:15px;}
+.brand span{color:var(--red);}
+.status{display:flex; align-items:center; gap:10px; font-size:10px; color:var(--muted);}
+.status .src{display:flex; align-items:center;}
+.dot{width:6px; height:6px; border-radius:50%; background:var(--muted); display:inline-block; margin-right:4px;}
+.dot.live{background:var(--green); box-shadow:0 0 6px var(--green); animation:pulse 1.6s infinite;}
+.dot.off{background:var(--red);}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+.wxbar{display:none;}
+.statusbar{background:var(--panel); border-bottom:1px solid var(--line); padding:9px 14px 10px;}
+.sbrow{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:4px;}
+.sbrow:first-child{margin-top:0;}
+.flagline{display:flex; align-items:center; gap:6px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px;}
+.laptxt{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:12px; font-variant-numeric:tabular-nums; color:var(--text); flex-shrink:0;}
+.wxline{display:flex; align-items:center; gap:5px; color:var(--muted); font-size:11px; white-space:nowrap; overflow:hidden;}
+.wxline b{color:var(--text); font-weight:500;}
+.wxline .unit{font-size:9px; margin-right:4px; color:var(--muted);}
+.clocktxt{font-variant-numeric:tabular-nums; font-size:13px; color:var(--amber); flex-shrink:0;}
+.clocktxt.danger{color:var(--red);}
+.sbrow.rc{font-size:10px; letter-spacing:.3px; text-transform:uppercase; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; justify-content:flex-start;}
+main{position:absolute; top:0; bottom:0; left:0; right:0; padding-top:112px; padding-bottom:calc(58px + var(--sat-b)); overflow:hidden;}
+.view{display:none; height:100%; overflow-y:auto; -webkit-overflow-scrolling:touch;}
+.view.on{display:block;}
+#timingList{padding:2px 0 8px;}
+.trow{padding:10px 14px 9px; border-bottom:1px solid var(--line); cursor:pointer; transition:background .15s;}
+.trow.selected{background:rgba(79,216,232,.08);}
+.trow.pit{background:rgba(255,154,31,.07);}
+.trow-top{display:flex; align-items:center; gap:7px;}
+.pos{width:16px; font-weight:700; font-size:14px; color:var(--muted); flex-shrink:0; text-align:center;}
+.swatch{width:3px; height:15px; border-radius:2px; flex-shrink:0;}
+.avatar{width:22px; height:22px; border-radius:50%; object-fit:cover; background:#1c1c22; flex-shrink:0; border:1px solid var(--line);}
+.avatar[src=""], .avatar.hidden{visibility:hidden;}
+.dname{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:12.5px; letter-spacing:.3px; flex-shrink:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.teamlogo{height:11px; width:auto; max-width:34px; object-fit:contain; opacity:.85; flex-shrink:0;}
+.drspill{font-size:8px; font-weight:700; padding:2px 5px; border-radius:3px; border:1px solid var(--line); color:var(--muted); flex-shrink:0; letter-spacing:.3px;}
+.drspill.open{color:var(--green); border-color:var(--green);}
+.pitbadge{font-size:8px; background:var(--amber); color:#111; padding:1px 4px; border-radius:2px; font-weight:700; flex-shrink:0;}
+.gapcol{margin-left:auto; text-align:right; display:flex; flex-direction:column; gap:1px; flex-shrink:0;}
+.gap{font-family:'Space Grotesk',sans-serif; font-size:12.5px; font-weight:700; color:var(--text); white-space:nowrap;}
+.gap.leader{color:var(--amber); letter-spacing:.6px; font-size:11px;}
+.interval{font-size:9px; color:var(--muted); white-space:nowrap;}
+.trow-mid{display:flex; align-items:center; gap:8px; margin-top:7px; margin-left:26px;}
+.segbar{display:flex; gap:1.5px; flex:1; height:9px;}
+.seg{flex:1; border-radius:1px; background:#2c2c34;}
+.seg.g{background:var(--green);} .seg.y{background:var(--amber);} .seg.p{background:var(--purple);} .seg.b{background:var(--blue);}
+.tyre-wrap{position:relative; flex-shrink:0; width:22px; height:22px;}
+.tyre{width:22px; height:22px; border-radius:50%; border:1.5px solid currentColor; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700;}
+.tyre.S{color:var(--red);} .tyre.M{color:var(--amber);} .tyre.H{color:#e8e8e8;} .tyre.I{color:var(--green);} .tyre.W{color:var(--cyan);}
+.tyre-age{position:absolute; top:-5px; right:-7px; font-size:8px; color:var(--muted); background:var(--panel); padding:0 2px; border-radius:3px; line-height:1.3;}
+.trow-sectors{display:flex; gap:16px; margin-top:5px; margin-left:26px; font-size:10.5px; color:var(--muted);}
+.trow-sectors span.g{color:var(--green);} .trow-sectors span.p{color:var(--purple);}
+.trow-bottom{display:flex; justify-content:space-between; margin-top:4px; margin-left:26px; font-size:10px; color:var(--muted);}
+.trow-bottom b{color:var(--text); font-weight:500;}
+.trow-bottom b.fast{color:var(--purple);} .trow-bottom b.pb{color:var(--green);}
+.telem{display:flex; gap:9px; margin-top:6px; margin-left:26px; padding-top:6px; border-top:1px dashed var(--line); font-size:9.5px; color:var(--muted); flex-wrap:wrap; row-gap:4px;}
+.telem b{color:var(--text); font-weight:600; font-size:11px;}
+.telem .drs{padding:1px 6px; border-radius:3px; border:1px solid var(--line);}
+.telem .drs.open{color:var(--green); border-color:var(--green);}
+.telem .drs.aero.open{color:var(--cyan); border-color:var(--cyan);}
+.telem .drs.ot.open{color:var(--purple); border-color:var(--purple); box-shadow:0 0 6px var(--purple);}
+.bar{width:34px; height:4px; background:#3a3a42; border-radius:2px; overflow:hidden; display:inline-block; vertical-align:middle; margin-left:3px;}
+.bar i{display:block; height:100%; background:var(--cyan);}
+.bar.brk i{background:var(--red);}
+.empty{color:var(--muted); text-align:center; padding:40px 20px; font-size:12px;}
+#trackView{position:relative; height:100%;}
+#trackCanvas{width:100%; height:100%; display:block; touch-action:none;}
+.track-hint{position:absolute; bottom:12px; left:12px; font-size:10px; color:var(--muted); background:rgba(20,20,24,.8); padding:5px 9px; border-radius:6px;}
+#radioList{padding:8px;}
+.filterbar{padding:10px 12px 4px;}
+.filterbar select{width:100%; appearance:none; -webkit-appearance:none; background:#eceae4 url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%23141418" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>') no-repeat right 12px center/14px; background-color:#eceae4; color:#141418; border:none; border-radius:20px; padding:10px 34px 10px 16px; font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:600;}
+.rcard{background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--muted); border-radius:8px; padding:10px 12px; margin-bottom:6px;}
+.rcard .rmeta{display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:11px;}
+.rcard .ravatar{width:22px; height:22px; border-radius:50%; object-fit:cover; background:#1c1c22; border:1px solid var(--line);}
+.rcard .rtla{font-weight:700; font-size:12px;}
+.rcard .rtime{color:var(--muted); margin-left:auto;}
+.player{display:flex; align-items:center; gap:9px; margin-bottom:7px;}
+.playbtn{
+  width:30px; height:30px; border-radius:50%; border:none; flex-shrink:0; cursor:pointer;
+  background:var(--amber); color:#12100c; display:flex; align-items:center; justify-content:center;
+  font-size:0; position:relative; transition:transform .1s, background .15s;
+}
+.playbtn:active{transform:scale(.92);}
+.playbtn::before{content:''; width:0; height:0; border-style:solid; border-width:6px 0 6px 10px; border-color:transparent transparent transparent #12100c; margin-left:2px;}
+.playbtn.playing::before{width:9px; height:11px; border-style:none; border-width:0; background:#12100c; box-shadow:4px 0 0 #12100c; margin-left:0; border-radius:1px;}
+.playbtn.error{background:var(--red);}
+.ptrack{flex:1; height:4px; background:#2a2a32; border-radius:2px; position:relative; cursor:pointer;}
+.pfill{position:absolute; left:0; top:0; bottom:0; width:0%; background:var(--amber); border-radius:2px;}
+.ptime{font-size:10px; color:var(--muted); flex-shrink:0; width:34px; text-align:right;}
+.rcard .line{font-size:12px; margin-top:3px;}
+.rcard .line b{color:var(--amber); margin-right:6px;}
+#rcList{padding:8px;}
+.rc-msg{background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px 10px; margin-bottom:6px; font-size:12px; display:flex; gap:9px; align-items:flex-start;}
+.flagchip{flex-shrink:0; font-size:9px; font-weight:700; letter-spacing:.4px; padding:3px 6px; border-radius:3px; margin-top:1px;}
+.rc-msg .t{color:var(--muted); font-size:10px; display:block; margin-bottom:2px;}
+nav{position:absolute; left:0; right:0; bottom:0; display:flex; background:var(--panel); border-top:1px solid var(--line); padding-bottom:var(--sat-b);}
+nav button{flex:1; background:none; border:none; color:var(--muted); font-family:'Space Grotesk',sans-serif; font-size:11px; font-weight:500; padding:10px 0 8px; display:flex; flex-direction:column; align-items:center; gap:3px;}
+nav button svg{width:20px; height:20px; stroke:currentColor; fill:none; stroke-width:1.8;}
+nav button.on{color:var(--red);}
+::-webkit-scrollbar{width:0; height:0;}
+</style>
+</head>
+<body>
+<div id="app">
+<header>
+  <div class="brand">KINETIC<span>/</span><span id="sessionName" style="color:var(--muted); font-size:11px; font-weight:400;">—</span></div>
+  <div class="status">
+    <span class="src"><span class="dot off" id="dotMain"></span>LIVE</span>
+    <span class="src"><span class="dot off" id="dotRadio"></span>RADIO</span>
+  </div>
+</header>
+<div class="statusbar">
+  <div class="sbrow">
+    <span class="flagline"><span id="flagIcon">🏁</span><b id="statusText">Live</b></span>
+    <b class="laptxt">Lap <span id="wLap">—</span></b>
+  </div>
+  <div class="sbrow">
+    <span class="wxline"><span id="wxIcon">☀️</span><b id="wAir">—°</b><span class="unit">air</span><b id="wTrack">—°</b><span class="unit">trk</span><span id="wCond">—</span></span>
+    <b class="clocktxt" id="wClock">—</b>
+  </div>
+  <div class="sbrow rc" id="rcTicker">—</div>
+</div>
+<main>
+  <div class="view on" id="view-timing"><div id="timingList"><div class="empty">Connecting to pitwall feed…</div></div></div>
+  <div class="view" id="view-track"><div id="trackView"><canvas id="trackCanvas"></canvas><div class="track-hint" id="trackHint">Connecting…</div></div></div>
+  <div class="view" id="view-radio">
+    <div class="filterbar"><select id="radioFilter"><option value="">Filter by drivers</option></select></div>
+    <div id="radioList"><div class="empty">No transcripts yet.</div></div>
+  </div>
+  <div class="view" id="view-rc"><div id="rcList"><div class="empty">No messages yet.</div></div></div>
+</main>
+<nav>
+  <button class="on" data-view="timing"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Timing</button>
+  <button data-view="track"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>Track</button>
+  <button data-view="radio"><svg viewBox="0 0 24 24"><path d="M4 12h4l3-7v14l-3-7H4z"/></svg>Radio</button>
+  <button data-view="rc"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 5.9L20 9l-4.6 3.8L16.9 19 12 15.6 7.1 19l1.5-6.2L4 9l5.6-1.1z"/></svg>RC</button>
+</nav>
+</div>
+
+<script>
+/* ============================================================
+   MAIN SOURCE — timing / weather / RC / track / telemetry
+   pitwall.me feed, ported from track.html
+   ============================================================ */
+const MAIN_WS = "wss://api.pitwall.me/ws";
+let state = {}, dirty = true, wsMain = null, backoffMain = 2000;
+let circuitKey = null, track = null, carAnim = {}, telemetry = {};
+let selectedDriver = null; // car number (string), selected from the Timing list or tapped on the Track map
+let carScreenPos = {}; // num -> {x,y,r} last-drawn canvas position, used to hit-test taps on the track
+
+// 2026 grid team logos (with number logos) + driver portraits, keyed by TLA.
+const DRIVER_ASSETS = {
+  NOR:{teamLogo:"https://images.prismic.io/formula-1-dashboard/Z7ZYlJ7c43Q3f_Pd_mclaren-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/mclaren/lannor01/2026mclarenlannor01numberwhitefrless.webp"},
+  PIA:{teamLogo:"https://images.prismic.io/formula-1-dashboard/Z7ZYlJ7c43Q3f_Pd_mclaren-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/mclaren/oscpia01/2026mclarenoscpia01numberwhitefrless.webp"},
+  RUS:{teamLogo:"https://images.prismic.io/formula-1-dashboard/Z7ZYkZ7c43Q3f_Pa_mercedes-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/mercedes/georus01/2026mercedesgeorus01numberwhitefrless.webp"},
+  ANT:{teamLogo:"https://images.prismic.io/formula-1-dashboard/Z7ZYkZ7c43Q3f_Pa_mercedes-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/mercedes/andant01/2026mercedesandant01numberwhitefrless.webp"},
+  VER:{teamLogo:"https://images.prismic.io/formula-1-dashboard/aS9MoHNYClf9nuMb_rbr-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/redbullracing/maxver01/2026redbullracingmaxver01numberwhitefrless.webp"},
+  HAD:{teamLogo:"https://images.prismic.io/formula-1-dashboard/aS9MoHNYClf9nuMb_rbr-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/redbullracing/isahad01/2026redbullracingisahad01numberwhitefrless.webp"},
+  LEC:{teamLogo:"https://images.prismic.io/formula-1-dashboard/Z7ZYjp7c43Q3f_PX_ferrari-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/ferrari/chalec01/2026ferrarichalec01numberwhitefrless.webp"},
+  HAM:{teamLogo:"https://images.prismic.io/formula-1-dashboard/Z7ZYjp7c43Q3f_PX_ferrari-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/ferrari/lewham01/2026ferrarilewham01numberwhitefrless.webp"},
+  SAI:{teamLogo:"https://images.prismic.io/formula-1-dashboard/aWqvnQIvOtkhBqzz_williams-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/williams/carsai01/2026williamscarsai01numberwhitefrless.webp"},
+  ALB:{teamLogo:"https://images.prismic.io/formula-1-dashboard/aWqvnQIvOtkhBqzz_williams-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/williams/alealb01/2026williamsalealb01numberwhitefrless.webp"},
+  LAW:{teamLogo:"https://images.prismic.io/formula-1-dashboard/Z7ZYj57c43Q3f_PY_rb-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/racingbulls/lialaw01/2026racingbullslialaw01numberwhitefrless.webp"},
+  LIN:{teamLogo:"https://images.prismic.io/formula-1-dashboard/Z7ZYj57c43Q3f_PY_rb-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/racingbulls/arvlin01/2026racingbullsarvlin01numberwhitefrless.webp"},
+  ALO:{teamLogo:"https://images.prismic.io/formula-1-dashboard/Z7ZYlp7c43Q3f_Pf_aston-martin-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/astonmartin/feralo01/2026astonmartinferalo01numberwhitefrless.webp"},
+  STR:{teamLogo:"https://images.prismic.io/formula-1-dashboard/Z7ZYlp7c43Q3f_Pf_aston-martin-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/astonmartin/lanstr01/2026astonmartinlanstr01numberwhitefrless.webp"},
+  OCO:{teamLogo:"https://images.prismic.io/formula-1-dashboard/Z7ZYkp7c43Q3f_Pb_haas-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/haasf1team/estoco01/2026haasf1teamestoco01numberwhitefrless.webp"},
+  BEA:{teamLogo:"https://images.prismic.io/formula-1-dashboard/Z7ZYkp7c43Q3f_Pb_haas-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/haasf1team/olibea01/2026haasf1teamolibea01numberwhitefrless.webp"},
+  GAS:{teamLogo:"https://images.prismic.io/formula-1-dashboard/Z7ZYkJ7c43Q3f_PZ_alpine-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/alpine/piegas01/2026alpinepiegas01numberwhitefrless.webp"},
+  COL:{teamLogo:"https://images.prismic.io/formula-1-dashboard/Z7ZYkJ7c43Q3f_PZ_alpine-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/alpine/fracol01/2026alpinefracol01numberwhitefrless.webp"},
+  HUL:{teamLogo:"https://images.prismic.io/formula-1-dashboard/aWqm4AIvOtkhBqx5_audi-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/audi/nichul01/2026audinichul01numberwhitefrless.webp"},
+  BOR:{teamLogo:"https://images.prismic.io/formula-1-dashboard/aWqm4AIvOtkhBqx5_audi-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/audi/gabbor01/2026audigabbor01numberwhitefrless.webp"},
+  PER:{teamLogo:"https://images.prismic.io/formula-1-dashboard/aWqongIvOtkhBqyj_cadillac-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/cadillac/serper01/2026cadillacserper01numberwhitefrless.webp"},
+  BOT:{teamLogo:"https://images.prismic.io/formula-1-dashboard/aWqongIvOtkhBqyj_cadillac-normalized-logo.png", numberLogo:"https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/cadillac/valbot01/2026cadillacvalbot01numberwhitefrless.webp"}
+};
+const DRIVER_PORTRAITS = {
+  NOR:"https://images.prismic.io/formula-1-dashboard/Z9VKeziBA97Gig6v_2025-norris.avif",
+  PIA:"https://images.prismic.io/formula-1-dashboard/Z9VKfTiBA97Gig6x_2025-piastri.avif",
+  RUS:"https://images.prismic.io/formula-1-dashboard/Z9VKfjiBA97Gig6y_2025-russell.avif",
+  ANT:"https://images.prismic.io/formula-1-dashboard/Z9VKcTiBA97Gig6l_2025-antonelli.avif",
+  VER:"https://images.prismic.io/formula-1-dashboard/Z9VKgjiBA97Gig62_2025-verstappen.avif",
+  HAD:"https://images.prismic.io/formula-1-dashboard/aXCP7AIvOtkhBw6S_2026-hadjar.png",
+  LEC:"https://images.prismic.io/formula-1-dashboard/Z9VKejiBA97Gig6u_2025-leclerc.avif",
+  HAM:"https://images.prismic.io/formula-1-dashboard/Z9VKdziBA97Gig6r_2025-hamilton.avif",
+  SAI:"https://images.prismic.io/formula-1-dashboard/Z9VKfziBA97Gig6z_2025-sainz.avif",
+  ALB:"https://images.prismic.io/formula-1-dashboard/Z9VKbziBA97Gig6j_2025-albon.avif",
+  LAW:"https://images.prismic.io/formula-1-dashboard/Z_J86HdAxsiBwXP1_2025-lawson-RB.avif",
+  LIN:"https://images.prismic.io/formula-1-dashboard/aXCPIwIvOtkhBw55_2026-lindblad.png",
+  ALO:"https://images.prismic.io/formula-1-dashboard/Z9VKcDiBA97Gig6k_2025-alonso.avif",
+  STR:"https://images.prismic.io/formula-1-dashboard/Z9VKgDiBA97Gig60_2025-stroll.avif",
+  OCO:"https://images.prismic.io/formula-1-dashboard/Z9VKfDiBA97Gig6w_2025-ocon.avif",
+  BEA:"https://images.prismic.io/formula-1-dashboard/Z9VKcjiBA97Gig6m_2025-bearman.avif",
+  GAS:"https://images.prismic.io/formula-1-dashboard/Z9VKdTiBA97Gig6p_2025-gasly.avif",
+  COL:"https://images.prismic.io/formula-1-dashboard/aCOy_ydWJ-7kSCnB_2025-colapinto.avif",
+  HUL:"https://images.prismic.io/formula-1-dashboard/aXCOGwIvOtkhBw5S_2026-hulkenberg.png",
+  BOR:"https://images.prismic.io/formula-1-dashboard/aXCOGQIvOtkhBw5Q_2026-bortoleto.png",
+  PER:"https://images.prismic.io/formula-1-dashboard/aXCOHAIvOtkhBw5T_2026-perez.png",
+  BOT:"https://images.prismic.io/formula-1-dashboard/aXCOGgIvOtkhBw5R_2026-bottas.png"
+};
+const portraitCache = {}; // tla -> {img, ok}
+function getPortrait(tla){
+  if (!tla || !DRIVER_PORTRAITS[tla]) return null;
+  let c = portraitCache[tla];
+  if (!c){
+    c = {img:new Image(), ok:false};
+    c.img.crossOrigin = 'anonymous';
+    c.img.onload = () => c.ok = true;
+    c.img.onerror = () => c.ok = false;
+    c.img.src = DRIVER_PORTRAITS[tla];
+    portraitCache[tla] = c;
+  }
+  return c.ok ? c.img : null;
+}
+function portraitUrl(tla){ return (tla && DRIVER_PORTRAITS[tla]) || ''; }
+function teamLogoUrl(tla){ return (tla && DRIVER_ASSETS[tla] && DRIVER_ASSETS[tla].teamLogo) || ''; }
+
+function deepMerge(base, patch){
+  if (typeof base !== 'object' || base === null || typeof patch !== 'object' || patch === null) return patch;
+  const r = Array.isArray(base) ? base.slice() : Object.assign({}, base);
+  for (const k in patch){ r[k] = (base[k] && typeof patch[k]==='object') ? deepMerge(base[k], patch[k]) : patch[k]; }
+  return r;
+}
+function setDot(id, mode){ document.getElementById(id).className = 'dot ' + (mode==='live'?'live':mode==='off'?'off':''); }
+
+function connectMain(){
+  setDot('dotMain','connecting');
+  try{ wsMain = new WebSocket(MAIN_WS); wsMain.binaryType = 'arraybuffer'; }catch(e){ scheduleMain(); return; }
+  wsMain.onopen = () => { setDot('dotMain','live'); backoffMain = 2000; };
+  wsMain.onmessage = (evt) => {
+    let raw;
+    try{
+      raw = (evt.data instanceof ArrayBuffer) ? new TextDecoder().decode(pako.inflate(new Uint8Array(evt.data))) : evt.data;
+      const obj = JSON.parse(raw);
+      if (obj && obj.type==='bundle' && Array.isArray(obj.messages)) obj.messages.forEach(processMainMsg);
+      else processMainMsg(obj);
+    }catch(e){}
+    dirty = true;
+  };
+  wsMain.onclose = () => { setDot('dotMain','off'); wsMain = null; scheduleMain(); };
+  wsMain.onerror = () => {};
+}
+function scheduleMain(){ setTimeout(connectMain, backoffMain); backoffMain = Math.min(backoffMain*1.6, 20000); }
+
+function processMainMsg(msg){
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.R && typeof msg.R === 'object'){ applyMainInitial(msg.R); return; }
+  if (Array.isArray(msg.M)){
+    msg.M.forEach(entry => {
+      if (entry && entry.H==='Streaming' && entry.M==='feed' && Array.isArray(entry.A) && entry.A.length>=2) applyMainFeed(entry.A[0], entry.A[1]);
+    });
+    return;
+  }
+  if (Array.isArray(msg) && msg.length>=2 && typeof msg[0]==='string') applyMainFeed(msg[0], msg[1]);
+}
+function applyMainInitial(initial){
+  for (const k in initial){
+    if (k.slice(-2)==='.z'){ routeCompressed(k, initial[k]); continue; }
+    state[k] = deepMerge(state[k] || {}, initial[k]);
+  }
+  if (initial.SessionInfo) trackSessionKey(initial.SessionInfo);
+  if (state.ExtrapolatedClock) captureClock(state.ExtrapolatedClock);
+}
+function applyMainFeed(key, value){
+  if (key.slice(-2)==='.z'){ routeCompressed(key, value); return; }
+  state[key] = deepMerge(state[key] || {}, value);
+  if (key==='SessionInfo') trackSessionKey(value);
+  if (key==='ExtrapolatedClock') captureClock(state[key]);
+}
+// Session clock ticks down/up client-side between feed updates — the feed only
+// pushes a new "Remaining" string occasionally, so we anchor it to performance.now()
+// and extrapolate every animation frame for a smooth, accurate-looking readout.
+let clockBase = null; // {ms, at, extrapolating}
+function parseClockStr(s){
+  if (!s || typeof s !== 'string') return null;
+  const parts = s.split(':').map(Number);
+  if (!parts.length || parts.some(isNaN)) return null;
+  let ms = 0;
+  if (parts.length===3) ms = (parts[0]*3600 + parts[1]*60 + parts[2]) * 1000;
+  else if (parts.length===2) ms = (parts[0]*60 + parts[1]) * 1000;
+  else ms = parts[0] * 1000;
+  return ms;
+}
+function captureClock(c){
+  const ms = parseClockStr(c && c.Remaining);
+  if (ms===null) return;
+  clockBase = { ms, at: performance.now(), extrapolating: !!(c && c.Extrapolating) };
+}
+function fmtClock(ms){
+  if (ms < 0) ms = 0;
+  const totalSec = Math.floor(ms/1000);
+  const h = Math.floor(totalSec/3600), m = Math.floor((totalSec%3600)/60), s = totalSec%60;
+  return (h>0 ? String(h).padStart(2,'0')+':' : '') + String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+}
+function renderClock(){
+  const el = document.getElementById('wClock');
+  if (!clockBase){ el.textContent = '—'; return; }
+  const elapsed = clockBase.extrapolating ? (performance.now() - clockBase.at) : 0;
+  el.textContent = fmtClock(clockBase.ms - elapsed);
+}
+function renderLap(){
+  const lc = state.LapCount || {};
+  const el = document.getElementById('wLap');
+  el.textContent = (lc.CurrentLap!=null && lc.TotalLaps!=null) ? `${lc.CurrentLap}/${lc.TotalLaps}` : '—';
+}
+function routeCompressed(key, blob){
+  if (key.indexOf('Position')===0) decodePositionBlob(blob);
+  else if (key.indexOf('CarData')===0) decodeCarDataBlob(blob);
+}
+function trackSessionKey(info){
+  const key = info && info.Meeting && info.Meeting.Circuit && info.Meeting.Circuit.Key;
+  if (key && key !== circuitKey){ circuitKey = key; fetchCircuitMap(key); }
+}
+function inflateBlob(b64){
+  const bin = atob(b64), bytes = new Uint8Array(bin.length);
+  for (let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  return JSON.parse(new TextDecoder().decode(pako.inflateRaw(bytes)));
+}
+// Smoothed positions: each new frame becomes a tween target from the
+// currently-interpolated point, so the track view never snaps (ported/
+// extended from track.html's carPos tween approach).
+function decodePositionBlob(b64){
+  if (!b64 || typeof b64 !== 'string') return;
+  try{
+    const parsed = inflateBlob(b64);
+    const frames = parsed && parsed.Position;
+    if (!Array.isArray(frames) || !frames.length) return;
+    const latest = frames[frames.length-1];
+    if (!latest || !latest.Entries) return;
+    const now = performance.now();
+    for (const num in latest.Entries){
+      const e = latest.Entries[num];
+      if (typeof e.X !== 'number' || typeof e.Y !== 'number') continue;
+      const prev = carAnim[num];
+      if (!prev){ carAnim[num] = {sx:e.X, sy:e.Y, tx:e.X, ty:e.Y, st:now, dur:300}; continue; }
+      const t = Math.min(1, (now - prev.st) / prev.dur);
+      const cx = prev.sx + (prev.tx - prev.sx) * t, cy = prev.sy + (prev.ty - prev.sy) * t;
+      carAnim[num] = {sx:cx, sy:cy, tx:e.X, ty:e.Y, st:now, dur: prev._interval ? Math.min(1200, Math.max(180, prev._interval)) : 300, _interval: now - prev.st};
+    }
+  }catch(e){}
+}
+// CarData.z → per-driver telemetry. Channel numbering: 0 RPM, 2 Speed, 3 nGear,
+// 4 Throttle, 5 Brake, 45 DRS, plus the 2026 channels — 46 Active Aero State
+// (0 = high-downforce/Corner Mode, 1 = wings shed drag/Straight Mode) and
+// 47 Manual Override/Overtake (0 = standard deployment, 1 = full override deployed).
+function decodeCarDataBlob(b64){
+  if (!b64 || typeof b64 !== 'string') return;
+  try{
+    const parsed = inflateBlob(b64);
+    const frames = parsed && parsed.Entries;
+    if (!Array.isArray(frames) || !frames.length) return;
+    const latest = frames[frames.length-1];
+    const cars = latest.Cars || {};
+    for (const num in cars){
+      const ch = (cars[num].Channels) || {};
+      telemetry[num] = {
+        rpm: ch['0'], speed: ch['2'], gear: ch['3'],
+        throttle: ch['4'] ?? 0, brake: ch['5'] ?? 0, drs: ch['45'],
+        aero: ch['46'], overtake: ch['47']
+      };
+    }
+  }catch(e){}
+}
+async function fetchCircuitMap(key){
+  try{
+    const year = new Date().getFullYear();
+    const res = await fetch(`https://api.multiviewer.app/api/v1/circuits/${key}/${year}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!Array.isArray(data.x) || !data.x.length) return;
+    track = { x:data.x, y:data.y, corners:data.corners||[] };
+    document.getElementById('trackHint').textContent = 'Live positions overlay';
+  }catch(e){}
+}
+
+/* ============================================================
+   RADIO SOURCE — transcripts only, from f1pedia
+   ============================================================ */
+const RADIO_WS = "wss://f1.f1pedia.com/api/v1/live/ws";
+let radioSnap = null, wsRadio = null, backoffRadio = 2000, radioDirty = true;
+
+function connectRadio(){
+  setDot('dotRadio','connecting');
+  try{ wsRadio = new WebSocket(RADIO_WS); }catch(e){ scheduleRadio(); return; }
+  wsRadio.binaryType = 'arraybuffer';
+  wsRadio.onopen = () => { setDot('dotRadio','live'); backoffRadio = 2000; };
+  wsRadio.onmessage = (e) => {
+    let m;
+    try{ m = JSON.parse(typeof e.data==='string' ? e.data : new TextDecoder().decode(e.data)); }catch(err){ return; }
+    if (m.snapshot){ radioSnap = m.snapshot; radioDirty = true; }
+  };
+  wsRadio.onclose = () => { setDot('dotRadio','off'); wsRadio = null; scheduleRadio(); };
+  wsRadio.onerror = () => {};
+}
+function scheduleRadio(){ setTimeout(connectRadio, backoffRadio); backoffRadio = Math.min(backoffRadio*1.6, 20000); }
+
+/* ============================================================
+   RENDER — timing / weather / rc
+   ============================================================ */
+function fmtLap(v){ if(!v) return '—'; if (typeof v==='object') v=v.Value; return v || '—'; }
+// Renders the granular minisector bar seen on the broadcast graphic. TimingData
+// Sectors[i].Segments carries a Status code per minisector on the full feed
+// (2051 purple/overall-best, 2048 green/personal-best, 2049 yellow/running);
+// falls back to one wide chunk per sector when segment-level data isn't present.
+function segmentBar(sectors){
+  if (!Array.isArray(sectors) || !sectors.length) return '<div class="segbar"><span class="seg"></span><span class="seg"></span><span class="seg"></span></div>';
+  const segs = [];
+  sectors.slice(0,3).forEach(s=>{
+    const v = (s && typeof s==='object') ? s : {Value:s};
+    if (Array.isArray(v.Segments) && v.Segments.length){
+      v.Segments.forEach(seg=>{
+        const st = seg && seg.Status;
+        let cls='';
+        if (st===2051) cls='p'; else if (st===2048) cls='g'; else if (st===2049) cls='y'; else if (st===2052||st===2064) cls='b';
+        segs.push(cls);
+      });
+    } else {
+      let cls=''; if (v.OverallFastest) cls='p'; else if (v.PersonalFastest) cls='g'; else if (v.Value) cls='y';
+      segs.push(cls,cls,cls,cls,cls,cls);
+    }
+  });
+  return '<div class="segbar">' + segs.map(c=>`<span class="seg ${c}"></span>`).join('') + '</div>';
+}
+function sectorCls(s){
+  const v = (s && typeof s==='object') ? s : {Value:s};
+  return v.OverallFastest ? 'p' : (v.PersonalFastest ? 'g' : '');
+}
+function tyreBadge(stint){
+  if (!stint) return '<div class="tyre-wrap"></div>';
+  const comp = (stint.Compound || '?')[0].toUpperCase();
+  const age = stint.TotalLaps ?? stint.LapsOnTyre ?? '';
+  return `<div class="tyre-wrap"><div class="tyre ${comp}">${comp}</div>${age!==''?`<span class="tyre-age">${age}</span>`:''}</div>`;
+}
+function telemRow(num){
+  const t = telemetry[num];
+  if (!t) return '';
+  const drsOpen = typeof t.drs === 'number' && [10,12,14].includes(t.drs);
+  const aeroLabel = t.aero===1 ? 'STRAIGHT' : (t.aero===0 ? 'CORNER' : 'AERO');
+  const aeroOpen = t.aero===1;
+  const overtakeOpen = t.overtake===1;
+  return `<div class="telem">
+    <span>Spd <b>${t.speed ?? '—'}</b></span>
+    <span>Gear <b>${t.gear ?? '—'}</b></span>
+    <span>RPM <b>${t.rpm ?? '—'}</b></span>
+    <span>Thr <span class="bar"><i style="width:${t.throttle||0}%"></i></span></span>
+    <span>Brk <span class="bar brk"><i style="width:${t.brake?100:0}%"></i></span></span>
+    <span class="drs ${drsOpen?'open':''}">DRS</span>
+    <span class="drs aero ${aeroOpen?'open':''}" title="Active Aero (ch.46)">${aeroLabel}</span>
+    <span class="drs ot ${overtakeOpen?'open':''}" title="Manual Override / Overtake (ch.47)">OVERTAKE</span>
+  </div>`;
+}
+function renderTiming(){
+  const drivers = state.DriverList || {};
+  const lines = (state.TimingData && state.TimingData.Lines) || {};
+  const appLines = (state.TimingAppData && state.TimingAppData.Lines) || {};
+  const rows = Object.keys(lines).map(num=>({num, line:lines[num]||{}, drv:drivers[num]||{}, pos:parseInt((lines[num]||{}).Position ?? 999,10)})).sort((a,b)=>a.pos-b.pos);
+  const el = document.getElementById('timingList');
+  if (!rows.length){ el.innerHTML = '<div class="empty">Waiting for timing data…</div>'; return; }
+  el.innerHTML = rows.map(({num,line,drv})=>{
+    const color = drv.TeamColour ? '#'+drv.TeamColour.replace('#','') : '#555';
+    const tla = drv.Tla || num;
+    const dname = (drv.LastName ? `${(drv.FirstName||'')[0]||''} ${drv.LastName}`.trim().toUpperCase() : tla);
+    const pit = line.InPit || line.PitOut;
+    const stints = appLines[num] && appLines[num].Stints;
+    const stint = Array.isArray(stints) ? stints[stints.length-1] : null;
+    const best = line.BestLapTime;
+    const bestCls = best && best.OverallFastest ? 'fast' : (best && best.PersonalFastest ? 'pb' : '');
+    const pUrl = portraitUrl(tla), tLogo = teamLogoUrl(tla);
+    const t = telemetry[num];
+    const drsOpen = t && typeof t.drs === 'number' && [10,12,14].includes(t.drs);
+    const isLeader = String(line.Position) === '1';
+    const gapTxt = isLeader ? 'LEADER' : (line.GapToLeader || '—');
+    const intTxt = (line.IntervalToPositionAhead && line.IntervalToPositionAhead.Value) || '';
+    const sectors = Array.isArray(line.Sectors) ? line.Sectors.slice(0,3) : [];
+    return `<div class="trow ${pit?'pit':''} ${selectedDriver===num?'selected':''}" data-num="${num}">
+      <div class="trow-top">
+        <span class="pos">${line.Position ?? '—'}</span>
+        <span class="swatch" style="background:${color}"></span>
+        <img class="avatar" src="${pUrl}" alt="" onerror="this.classList.add('hidden')">
+        <span class="dname" style="color:${isLeader?'#fff':'inherit'}">${dname}</span>
+        ${tLogo?`<img class="teamlogo" src="${tLogo}" alt="" onerror="this.style.display='none'">`:''}
+        <span class="drspill ${drsOpen?'open':''}">DRS</span>
+        ${pit?'<span class="pitbadge">PIT</span>':''}
+        <div class="gapcol">
+          <span class="gap ${isLeader?'leader':''}">${gapTxt}</span>
+          ${intTxt?`<span class="interval">Int +${intTxt}</span>`:''}
+        </div>
+      </div>
+      <div class="trow-mid">
+        ${segmentBar(sectors)}
+        ${tyreBadge(stint)}
+      </div>
+      <div class="trow-sectors">${sectors.map(s=>{
+        const v=(s&&typeof s==='object')?s:{Value:s};
+        return `<span class="${sectorCls(s)}">${v.Value||'—'}</span>`;
+      }).join('')}</div>
+      <div class="trow-bottom"><span>Last <b>${fmtLap(line.LastLapTime)}</b></span><span>Best <b class="${bestCls}">${fmtLap(best)}</b></span></div>
+      ${telemRow(num)}
+    </div>`;
+  }).join('');
+}
+document.getElementById('timingList').addEventListener('click', (e)=>{
+  const card = e.target.closest('.trow');
+  if (!card) return;
+  const num = card.dataset.num;
+  selectedDriver = (selectedDriver === num) ? null : num;
+  renderTiming();
+});
+const FLAGS = {
+  GREEN:{c:'#22c55e'}, CLEAR:{c:'#4ade80'}, YELLOW:{c:'#eab308'}, 'DOUBLE YELLOW':{c:'#ca8a04'},
+  RED:{c:'#ef4444'}, BLUE:{c:'#3b82f6'}, CHEQUERED:{c:'#e5e7eb', dark:true}, 'BLACK AND WHITE':{c:'#e5e7eb', dark:true}
+};
+function renderRC(){
+  const msgs = (state.RaceControlMessages && state.RaceControlMessages.Messages) || [];
+  const el = document.getElementById('rcList');
+  if (!msgs.length){ el.innerHTML = '<div class="empty">No messages yet.</div>'; return; }
+  el.innerHTML = msgs.slice(-30).reverse().map(m=>{
+    const t = m.Utc ? new Date(m.Utc).toLocaleTimeString() : '';
+    const flag = m.Flag ? FLAGS[String(m.Flag).toUpperCase()] : null;
+    const chip = flag ? `<span class="flagchip" style="background:${flag.c};color:${flag.dark?'#111':'#0a0a0c'}">${m.Flag}</span>` : '';
+    return `<div class="rc-msg">${chip}<div><span class="t">${t}${m.Category?' · '+m.Category:''}</span>${m.Message||''}</div></div>`;
+  }).join('');
+}
+function renderStatusBar(){
+  const w = state.WeatherData || {};
+  const rain = (w.Rainfall==='1' || w.Rainfall===1);
+  document.getElementById('wxIcon').textContent = rain ? '🌧️' : '☀️';
+  document.getElementById('wAir').textContent = (w.AirTemp ?? '—') + '°';
+  document.getElementById('wTrack').textContent = (w.TrackTemp ?? '—') + '°';
+  document.getElementById('wCond').textContent = rain ? 'Wet' : (w.AirTemp!==undefined ? 'Clear' : '—');
+
+  const si = state.SessionInfo || {};
+  document.getElementById('sessionName').textContent = [si.Meeting && si.Meeting.Name, si.Name].filter(Boolean).join(' — ') || '—';
+
+  // Flag / session-status line: derived from TrackStatus (yellow/SC/VSC/red/clear)
+  // and SessionStatus (finished → chequered), matching the broadcast-graphic wording.
+  const ts = state.TrackStatus || {};
+  const msg = String(ts.Message || '').toLowerCase();
+  let icon = '🟢', text = ts.Message || 'Live';
+  if (state.SessionStatus === 'Finished' || msg.includes('chequered')) { icon = '🏁'; text = 'Chequered Flag'; }
+  else if (msg.includes('virtual')) { icon = '🐢'; text = 'Virtual Safety Car'; }
+  else if (msg.includes('safety')) { icon = '🚨'; text = 'Safety Car'; }
+  else if (msg.includes('red')) { icon = '🔴'; text = 'Red Flag'; }
+  else if (msg.includes('yellow')) { icon = '🟡'; text = 'Yellow Flag'; }
+  else if (msg.includes('clear') || msg.includes('green') || msg.includes('allclear')) { icon = '🟢'; text = 'Track Clear'; }
+  document.getElementById('flagIcon').textContent = icon;
+  document.getElementById('statusText').textContent = text;
+  document.getElementById('wClock').classList.toggle('danger', icon==='🔴' || icon==='🚨' || icon==='🟡');
+
+  const msgs = (state.RaceControlMessages && state.RaceControlMessages.Messages) || [];
+  const latest = msgs[msgs.length - 1];
+  document.getElementById('rcTicker').textContent = latest ? (latest.Message || '—') : '—';
+}
+
+/* ============================================================
+   RENDER — radio, with custom play button (no native <audio controls>)
+   ============================================================ */
+function fmtTime(s){ if (!isFinite(s)) return '0:00'; const m=Math.floor(s/60), sec=Math.floor(s%60); return m+':'+String(sec).padStart(2,'0'); }
+function renderRadio(){
+  const el = document.getElementById('radioList');
+  // never rebuild while any player has been touched (playing OR mid-load) — rebuilding
+  // replaces the <audio> element and kills playback / loses scrub position.
+  if (el.querySelector('audio[data-touched="1"]')) return;
+  const radios = radioSnap && radioSnap.team_radio;
+  if (!Array.isArray(radios) || !radios.length){ el.innerHTML = '<div class="empty">No transcripts yet.</div>'; return; }
+  const drivers = new Map((radioSnap.drivers||[]).map(d=>[d.driver_number, d]));
+
+  // keep the filter dropdown's options in sync with who's actually in the radio feed
+  const filterEl = document.getElementById('radioFilter');
+  const prevFilter = filterEl.value;
+  const known = new Set([...drivers.values()].map(d=>d.name_acronym).filter(Boolean));
+  const optionsHtml = '<option value="">Filter by drivers</option>' + [...known].sort().map(tla=>`<option value="${tla}">${tla}</option>`).join('');
+  if (filterEl.dataset.built !== [...known].sort().join(',')){
+    filterEl.innerHTML = optionsHtml;
+    filterEl.dataset.built = [...known].sort().join(',');
+    filterEl.value = prevFilter && known.has(prevFilter) ? prevFilter : '';
+  }
+  const activeFilter = filterEl.value;
+
+  let items = radios.slice().reverse().slice(0,60);
+  if (activeFilter) items = items.filter(r=>{
+    const d = drivers.get(r.driver_number) || {};
+    return (r.acronym || d.name_acronym) === activeFilter;
+  });
+  items = items.slice(0,25);
+  if (!items.length){ el.innerHTML = '<div class="empty">No transcripts for this driver yet.</div>'; return; }
+  el.innerHTML = items.map((r,i)=>{
+    const d = drivers.get(r.driver_number) || {};
+    const color = d.team_colour ? '#'+String(d.team_colour).replace('#','') : 'var(--muted)';
+    const t = r.date ? new Date(r.date).toLocaleTimeString() : '';
+    const tla = r.acronym || d.name_acronym || '';
+    const pUrl = portraitUrl(tla);
+    const lines = (r.transcript||[]).map(seg =>
+      `<div class="line"><b>${seg.speaker==='driver' ? (tla || 'DRV') : 'PIT'}</b>${seg.en || seg.es || ''}</div>`
+    ).join('');
+    const player = r.recording_url ? `<div class="player" data-idx="${i}">
+        <button class="playbtn" data-src="${r.recording_url}"></button>
+        <div class="ptrack"><div class="pfill"></div></div>
+        <span class="ptime">0:00</span>
+      </div>` : '';
+    return `<div class="rcard" style="border-left-color:${color}">
+      <div class="rmeta">${pUrl?`<img class="ravatar" src="${pUrl}" alt="" onerror="this.style.visibility='hidden'">`:''}<span class="rtla" style="color:${color}">${tla || r.driver_number}</span><span class="rtime">${t}</span></div>
+      ${player}
+      ${lines || '<div class="empty" style="padding:4px 0;">No transcript</div>'}
+    </div>`;
+  }).join('');
+}
+// Event delegation so the custom player survives rebuilds without re-binding per element.
+document.getElementById('radioFilter').addEventListener('change', ()=>{ radioDirty = true; });
+document.getElementById('radioList').addEventListener('click', (e)=>{
+  const btn = e.target.closest('.playbtn');
+  const track = e.target.closest('.ptrack');
+  if (btn){
+    const player = btn.closest('.player');
+    let audio = player.querySelector('audio');
+    if (!audio){
+      audio = document.createElement('audio');
+      audio.src = btn.dataset.src; audio.preload = 'metadata';
+      player.appendChild(audio);
+      audio.addEventListener('timeupdate', ()=>{
+        const fill = player.querySelector('.pfill'), time = player.querySelector('.ptime');
+        if (audio.duration) fill.style.width = (audio.currentTime/audio.duration*100)+'%';
+        time.textContent = fmtTime(audio.duration - audio.currentTime || 0);
+      });
+      audio.addEventListener('play', ()=>{ audio.dataset.touched='1'; audio.dataset.playing='1'; btn.classList.remove('error'); btn.classList.add('playing'); });
+      audio.addEventListener('pause', ()=>{ audio.dataset.playing='0'; btn.classList.remove('playing'); });
+      audio.addEventListener('ended', ()=>{ audio.dataset.playing='0'; audio.dataset.touched='0'; btn.classList.remove('playing'); player.querySelector('.pfill').style.width='0%'; });
+      audio.addEventListener('error', ()=>{ audio.dataset.playing='0'; audio.dataset.touched='0'; btn.classList.remove('playing'); btn.classList.add('error'); });
+    }
+    // pause any other playing clip first
+    document.querySelectorAll('#radioList audio').forEach(a=>{ if (a!==audio && !a.paused) a.pause(); });
+    if (audio.paused){
+      // mark touched *before* play() resolves so a radio-snapshot rebuild
+      // mid-load can't rip the element out from under the pending play() call
+      audio.dataset.touched = '1';
+      const p = audio.play();
+      if (p && typeof p.catch === 'function'){
+        p.catch((err)=>{
+          console.warn('Radio playback failed:', err);
+          audio.dataset.touched = '0';
+          btn.classList.remove('playing');
+          btn.classList.add('error');
+        });
+      }
+    } else {
+      audio.pause();
+    }
+  } else if (track){
+    const audio = track.closest('.player').querySelector('audio');
+    if (audio && audio.duration){
+      const r = track.getBoundingClientRect();
+      audio.currentTime = ((e.clientX - r.left) / r.width) * audio.duration;
+    }
+  }
+});
+
+/* ============================================================
+   RENDER — track canvas, smoothed via carAnim tween, driver portraits
+   ============================================================ */
+const cv = document.getElementById('trackCanvas'), ctx = cv.getContext('2d');
+function resizeCanvas(){
+  const wrap = document.getElementById('trackView');
+  cv.width = wrap.clientWidth * devicePixelRatio; cv.height = wrap.clientHeight * devicePixelRatio;
+  cv.style.width = wrap.clientWidth+'px'; cv.style.height = wrap.clientHeight+'px';
+}
+window.addEventListener('resize', resizeCanvas);
+function fitTrack(){
+  const xs = track.x, ys = track.y;
+  const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+  const w=maxX-minX||1, h=maxY-minY||1, pad=40*devicePixelRatio;
+  return {minX,minY,w,h, scale:Math.min((cv.width-pad*2)/w,(cv.height-pad*2)/h), cx:cv.width/2, cy:cv.height/2};
+}
+function project(x,y,f){ return { x: f.cx + (x-f.minX-f.w/2)*f.scale, y: f.cy - (y-f.minY-f.h/2)*f.scale }; }
+function drawTrack(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  if (!track){
+    ctx.fillStyle = '#84838c'; ctx.font = (13*devicePixelRatio)+'px monospace'; ctx.textAlign='center';
+    ctx.fillText(circuitKey ? 'No circuit map for this session' : 'Waiting for session info…', cv.width/2, cv.height/2);
+    return;
+  }
+  const f = fitTrack();
+  ctx.strokeStyle = '#3a3a42'; ctx.lineWidth = 8*devicePixelRatio; ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.beginPath();
+  track.x.forEach((x,i)=>{ const p=project(x, track.y[i], f); i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y); });
+  ctx.stroke();
+  (track.corners||[]).forEach(c=>{
+    const cx = c.trackPosition ? c.trackPosition.x : undefined, cy = c.trackPosition ? c.trackPosition.y : undefined;
+    if (cx===undefined) return;
+    const p = project(cx, cy, f);
+    ctx.fillStyle='#26262e'; ctx.beginPath(); ctx.arc(p.x,p.y,10*devicePixelRatio,0,7); ctx.fill();
+    ctx.fillStyle='#84838c'; ctx.font=(9*devicePixelRatio)+'px monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(c.number ?? '', p.x, p.y);
+  });
+  const now = performance.now();
+  const drivers = state.DriverList || {};
+  const R = 11*devicePixelRatio;
+  carScreenPos = {};
+  for (const num in carAnim){
+    const a = carAnim[num];
+    const t = Math.min(1, (now - a.st) / a.dur);
+    const x = a.sx + (a.tx - a.sx) * t, y = a.sy + (a.ty - a.sy) * t;
+    const drv = drivers[num] || {};
+    const p = project(x, y, f);
+    carScreenPos[num] = {x:p.x, y:p.y, r:R};
+    const color = drv.TeamColour ? '#'+drv.TeamColour.replace('#','') : '#eceae4';
+    const label = drv.Tla || num; // "VER"-like tag
+    const carNo = drv.RacingNumber || num;
+    const isSelected = selectedDriver === num;
+
+    if (isSelected){
+      // pulsing halo behind the selected car
+      const pulse = 1 + 0.18 * Math.sin(now/220);
+      ctx.strokeStyle = '#4fd8e8';
+      ctx.lineWidth = 2*devicePixelRatio;
+      ctx.beginPath(); ctx.arc(p.x,p.y,(R+6*devicePixelRatio)*pulse,0,Math.PI*2); ctx.stroke();
+    }
+
+    // dot
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,R,0,Math.PI*2); ctx.fill();
+    if (isSelected){ ctx.strokeStyle='#0a0a0c'; ctx.lineWidth=2*devicePixelRatio; ctx.stroke(); }
+
+    // TLA label, e.g. "VER"
+    ctx.fillStyle='#0a0a0c'; ctx.font='bold '+(8.5*devicePixelRatio)+'px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(label.slice(0,3), p.x, p.y);
+
+    // small car-number badge, top-right of the dot
+    const bx = p.x + R*0.78, by = p.y - R*0.78, br = 6.5*devicePixelRatio;
+    ctx.fillStyle = '#0a0a0c'; ctx.beginPath(); ctx.arc(bx,by,br,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = color; ctx.lineWidth = 1.3*devicePixelRatio; ctx.stroke();
+    ctx.fillStyle = '#eceae4'; ctx.font = 'bold '+(7*devicePixelRatio)+'px monospace';
+    ctx.fillText(String(carNo), bx, by+0.5*devicePixelRatio);
+  }
+}
+// Tap a car on the track map to select/deselect it (mirrors the Timing-list click).
+cv.addEventListener('click', (e)=>{
+  const rect = cv.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * devicePixelRatio, y = (e.clientY - rect.top) * devicePixelRatio;
+  let hit = null, hitDist = Infinity;
+  for (const num in carScreenPos){
+    const c = carScreenPos[num];
+    const d = Math.hypot(x - c.x, y - c.y);
+    if (d <= c.r * 1.8 && d < hitDist){ hit = num; hitDist = d; }
+  }
+  if (hit){ selectedDriver = (selectedDriver === hit) ? null : hit; renderTiming(); }
+});
+
+/* ============================================================
+   RENDER LOOP — throttled full rebuilds (kills the flicker),
+   track canvas still redraws every frame for smooth tweening
+   ============================================================ */
+let lastFullRender = 0;
+function render(now){
+  if (dirty && now - lastFullRender > 500){
+    dirty = false; lastFullRender = now;
+    renderStatusBar(); renderTiming(); renderRC(); renderLap();
+  }
+  renderClock();
+  if (radioDirty && now - lastFullRender > 500){ radioDirty = false; renderRadio(); }
+  if (document.getElementById('view-track').classList.contains('on')) drawTrack();
+  requestAnimationFrame(render);
+}
+
+document.querySelectorAll('nav button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
+    btn.classList.add('on'); document.getElementById('view-'+btn.dataset.view).classList.add('on');
+    if (btn.dataset.view==='track') resizeCanvas();
+  });
+});
+
+resizeCanvas();
+connectMain();
+connectRadio();
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

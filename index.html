@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<script src="/app-shell.js"></script>
+<title>Kinetic F1</title>
+<style>
+	:root {
+		--bg-dark: #0a0a0c;
+		--panel-bg: rgba(22, 22, 26, 0.78);
+		--panel-bg-hover: rgba(30, 30, 36, 0.92);
+		--text-main: #f3f4f6;
+		--text-muted: #9ca3af;
+		--text-dim: #6b7280;
+		--green: #10b981;
+		--blue: #3b82f6;
+		--orange: #f59e0b;
+		--red: #ef4444;
+	}
+
+	* { box-sizing: border-box; }
+	html, body { min-height: 100%; margin: 0; }
+	body {
+		background-color: var(--bg-dark);
+		background-image:
+			radial-gradient(circle at 15% 10%, rgba(59, 130, 246, 0.08), transparent 34%),
+			radial-gradient(circle at 85% 90%, rgba(16, 185, 129, 0.05), transparent 36%),
+			linear-gradient(145deg, #111216 0%, #050507 72%);
+		color: var(--text-main);
+		font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+		font-size: 12px;
+	}
+
+	.window { min-height: 100vh; display: flex; flex-direction: column; }
+	.header {
+		background: rgba(26, 26, 26, 0.94);
+		border-bottom: 1px solid #333;
+		padding: 10px 15px;
+		display: flex;
+		align-items: center;
+	}
+	.mac-dots span { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; }
+	.mac-dots .red { background: #ff5f56; }
+	.mac-dots .yellow { background: #ffbd2e; }
+	.mac-dots .green { background: #27c93f; }
+	.title-bar { margin-left: 15px; display: flex; gap: 15px; align-items: center; color: var(--text-muted); }
+	.title-bar b { color: var(--text-main); font-weight: 600; }
+	.header-status { margin-left: auto; display: flex; align-items: center; gap: 7px; color: var(--text-dim); font-size: 10px; }
+	.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px rgba(16, 185, 129, 0.6); }
+
+	.content { width: min(980px, 100%); margin: 0 auto; padding: 44px 24px 56px; }
+	.eyebrow { color: var(--blue); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+	h1 { max-width: 620px; margin: 12px 0 12px; font-size: clamp(32px, 6vw, 58px); line-height: 1.02; letter-spacing: -0.04em; }
+	.intro { max-width: 560px; margin: 0; color: var(--text-muted); font-size: 14px; line-height: 1.6; }
+
+	.destination-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 38px; }
+	.destination {
+		position: relative;
+		min-height: 230px;
+		padding: 24px;
+		background: var(--panel-bg);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 10px;
+		box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+		color: var(--text-main);
+		text-decoration: none;
+		overflow: hidden;
+		transition: transform .18s ease, background .18s ease, border-color .18s ease;
+	}
+	.destination::after { content: ""; position: absolute; width: 150px; height: 150px; right: -48px; bottom: -62px; border-radius: 50%; background: var(--card-accent); opacity: .12; }
+	.destination:hover, .destination:focus-visible { background: var(--panel-bg-hover); border-color: var(--card-accent); transform: translateY(-3px); outline: none; }
+	.destination.live { --card-accent: var(--green); }
+	.destination.schedule { --card-accent: var(--orange); }
+	.destination-icon { width: 42px; height: 42px; display: grid; place-items: center; margin-bottom: 24px; border: 1px solid color-mix(in srgb, var(--card-accent) 55%, transparent); border-radius: 8px; color: var(--card-accent); background: color-mix(in srgb, var(--card-accent) 12%, transparent); }
+	.destination-icon svg { width: 21px; height: 21px; }
+	.destination h2 { margin: 0 0 8px; font-size: 20px; }
+	.destination p { max-width: 285px; margin: 0; color: var(--text-muted); line-height: 1.5; }
+	.destination-arrow { position: absolute; right: 24px; bottom: 23px; color: var(--card-accent); font-size: 20px; }
+
+	.footer-note { margin-top: 30px; color: var(--text-dim); font-size: 11px; }
+	@media (max-width: 620px) {
+		.content { padding: 32px 18px 40px; }
+		.destination-grid { grid-template-columns: 1fr; margin-top: 28px; }
+		.destination { min-height: 200px; }
+		.header-status { display: none; }
+	}
+</style>
+</head>
+<body>
+	<script type="module" src="auth.js"></script>
+	<main class="window">
+		<header class="header">
+			<div class="mac-dots" aria-hidden="true">
+				<span class="red"></span><span class="yellow"></span><span class="green"></span>
+			</div>
+			<div class="title-bar"><b>Kinetic F1</b><span>Race control</span></div>
+			<div class="header-status"><span class="status-dot"></span>System ready</div>
+		</header>
+
+		<section class="content" aria-labelledby="page-title">
+			<div class="eyebrow">Kinetic F1 / Control center</div>
+			<h1 id="page-title">Everything You Need for Race Day.</h1>
+			<p class="intro">Jump straight into the live track picture or plan your weekend around the full season schedule.</p>
+
+			<nav class="destination-grid" aria-label="Kinetic F1 destinations">
+				<a class="destination live" href="timing.html">
+					<div class="destination-icon" aria-hidden="true">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 18V6M4 18h16M8 15l3-4 3 2 5-7" stroke-linecap="round" stroke-linejoin="round" /></svg>
+					</div>
+					<h2>Live timing</h2>
+					<p>Follow positions, lap times, sectors, tyre stints, weather, and race control as it happens.</p>
+					<span class="destination-arrow" aria-hidden="true">&#8594;</span>
+				</a>
+
+				<a class="destination schedule" href="calendar.html">
+					<div class="destination-icon" aria-hidden="true">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="5" width="17" height="15" rx="2" /><path d="M7 3.5v3M17 3.5v3M3.5 9h17M8 13h3M13 13h3M8 16h3" stroke-linecap="round" /></svg>
+					</div>
+					<h2>Race schedule</h2>
+					<p>Browse every round, circuit, date, and session across the current F1 season.</p>
+					<span class="destination-arrow" aria-hidden="true">&#8594;</span>
+				</a>
+			</nav>
+
+			<p class="footer-note">Select a destination to get started.</p>
+		</section>
+	</main>
+</body>
+</html>

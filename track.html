@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>F1 Live Track Map - Advanced Control Center</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0a0c; --panel: rgba(20, 20, 24, 0.85); --line: #26262e;
+    --text: #eceae4; --muted: #84838c; --amber: #ff9a1f; --cyan: #4fd8e8;
+    --red: #ff4d4f; --green: #4ade80; --yellow: #eab308;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; overflow: hidden; }
+
+  #app { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+  
+  /* Status Badge */
+  .status-badge {
+    position: absolute; top: 16px; left: 16px; z-index: 30;
+    display: flex; align-items: center; gap: 8px;
+    background: var(--panel); border: 1px solid var(--line);
+    padding: 6px 14px; border-radius: 999px; font-size: 11px; font-weight: 700;
+    backdrop-filter: blur(10px); box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 1.6s infinite; }
+  .dot.off { background: var(--red); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+  /* Floating UI Toolbars */
+  .toolbar {
+    position: absolute; display: flex; flex-direction: column; gap: 6px; z-index: 30;
+  }
+  .toolbar.right { top: 16px; right: 16px; }
+  .toolbar.bottom-right { bottom: 24px; right: 16px; flex-direction: row; }
+
+  .tool-btn {
+    width: 40px; height: 40px; background: var(--panel); border: 1px solid var(--line);
+    color: var(--text); border-radius: 10px; cursor: pointer; display: flex;
+    justify-content: center; align-items: center; backdrop-filter: blur(10px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4); transition: background .15s, border-color .15s, color .15s;
+    font-size: 14px; font-weight: 700;
+  }
+  .tool-btn:hover { background: rgba(40, 40, 52, 0.95); border-color: rgba(255,255,255,0.2); }
+  .tool-btn.active { background: var(--cyan); color: #0a0a0c; border-color: var(--cyan); }
+  .tool-btn svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; }
+
+  /* Canvas Layout */
+  #trackView { position: relative; width: 100%; height: 100%; }
+  #trackCanvas { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+  #trackCanvas.dragging { cursor: grabbing; }
+  #trackCanvas.box-zoom { cursor: crosshair; }
+
+  /* Box Zoom Selection Overlay */
+  #boxZoomRect {
+    position: absolute; border: 2px dashed var(--cyan); background: rgba(79, 216, 232, 0.15);
+    display: none; pointer-events: none; z-index: 25;
+  }
+
+  .track-hint {
+    position: absolute; bottom: 16px; left: 16px; font-size: 11px; color: var(--muted);
+    background: var(--panel); padding: 8px 12px; border-radius: 8px;
+    border: 1px solid var(--line); backdrop-filter: blur(10px); pointer-events: none;
+    z-index: 20; max-width: 300px; line-height: 1.4;
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div class="status-badge">
+    <span class="dot off" id="dotMain"></span>
+    <span id="statusText">CONNECTING...</span>
+  </div>
+
+  <!-- Right Floating Toolbars -->
+  <div class="toolbar right">
+    <button class="tool-btn" id="zoomInBtn" title="Zoom In">+</button>
+    <button class="tool-btn" id="zoomOutBtn" title="Zoom Out">-</button>
+    <button class="tool-btn" id="recenterBtn" title="Reset View & Zoom">
+      <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+    </button>
+    <button class="tool-btn" id="boxZoomToggle" title="Box Zoom (Precision Area Magnifier)">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 3"/><path d="M9 3v18M3 9h18"/></svg>
+    </button>
+    <button class="tool-btn" id="lockModeToggle" title="Camera Follow Mode (Lock / Free Pan)">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg>
+    </button>
+    <button class="tool-btn" id="rotationToggle" title="Toggle Rotation Lock (North-Up vs Driver Heading)">
+      <svg viewBox="0 0 24 24"><path d="m12 2-7 10h5v10l7-10h-5z"/></svg>
+    </button>
+  </div>
+
+  <div id="trackView">
+    <canvas id="trackCanvas"></canvas>
+    <div id="boxZoomRect"></div>
+    <div class="track-hint" id="trackHint">
+      <b>Controls:</b> Drag to pan, Wheel to zoom. <br>
+      <b>Box Zoom:</b> Hold <b>Shift</b> + Click & Drag. <br>
+      Tap a driver dot to lock camera.
+    </div>
+  </div>
+</div>
+
+<script>
+const MAIN_WS = "wss://api.pitwall.me/ws";
+let state = {}, wsMain = null, backoffMain = 2000;
+let circuitKey = null, track = null, carAnim = {}, telemetry = {};
+let selectedDriver = null; 
+let carScreenPos = {};
+
+// Viewport / Camera State
+let panX = 0, panY = 0, zoom = 1;
+let isLockedToDriver = false;
+let rotationMode = 'north'; // 'north' or 'driver'
+let isBoxZoomActive = false;
+
+// Interaction helpers
+let isDragging = false, dragStart = {x:0, y:0}, panStart = {x:0, y:0};
+let boxZoomStart = null, boxZoomEnd = null;
+
+function deepMerge(base, patch){
+  if (typeof base !== 'object' || base === null || typeof patch !== 'object' || patch === null) return patch;
+  const r = Array.isArray(base) ? base.slice() : Object.assign({}, base);
+  for (const k in patch){ r[k] = (base[k] && typeof patch[k]==='object') ? deepMerge(base[k], patch[k]) : patch[k]; }
+  return r;
+}
+
+function setDot(id, mode){ 
+  const el = document.getElementById(id);
+  el.className = 'dot ' + (mode==='live'?'live':mode==='off'?'off':'');
+  document.getElementById('statusText').textContent = mode === 'live' ? 'LIVE TRACK MAP' : 'DISCONNECTED';
+}
+
+function connectMain(){
+  setDot('dotMain','connecting');
+  try{ wsMain = new WebSocket(MAIN_WS); wsMain.binaryType = 'arraybuffer'; }catch(e){ scheduleMain(); return; }
+  wsMain.onopen = () => { setDot('dotMain','live'); backoffMain = 2000; };
+  wsMain.onmessage = (evt) => {
+    let raw;
+    try{
+      raw = (evt.data instanceof ArrayBuffer) ? new TextDecoder().decode(pako.inflate(new Uint8Array(evt.data))) : evt.data;
+      const obj = JSON.parse(raw);
+      if (obj && obj.type==='bundle' && Array.isArray(obj.messages)) obj.messages.forEach(processMainMsg);
+      else processMainMsg(obj);
+    }catch(e){}
+  };
+  wsMain.onclose = () => { setDot('dotMain','off'); wsMain = null; scheduleMain(); };
+  wsMain.onerror = () => {};
+}
+function scheduleMain(){ setTimeout(connectMain, backoffMain); backoffMain = Math.min(backoffMain*1.6, 20000); }
+
+function processMainMsg(msg){
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.R && typeof msg.R === 'object'){ applyMainInitial(msg.R); return; }
+  if (Array.isArray(msg.M)){
+    msg.M.forEach(entry => {
+      if (entry && entry.H==='Streaming' && entry.M==='feed' && Array.isArray(entry.A) && entry.A.length>=2) applyMainFeed(entry.A[0], entry.A[1]);
+    });
+    return;
+  }
+  if (Array.isArray(msg) && msg.length>=2 && typeof msg[0]==='string') applyMainFeed(msg[0], msg[1]);
+}
+
+function applyMainInitial(initial){
+  for (const k in initial){
+    if (k.slice(-2)==='.z'){ routeCompressed(k, initial[k]); continue; }
+    state[k] = deepMerge(state[k] || {}, initial[k]);
+  }
+  if (initial.SessionInfo) trackSessionKey(initial.SessionInfo);
+}
+
+function applyMainFeed(key, value){
+  if (key.slice(-2)==='.z'){ routeCompressed(key, value); return; }
+  state[key] = deepMerge(state[key] || {}, value);
+  if (key==='SessionInfo') trackSessionKey(value);
+}
+
+function routeCompressed(key, blob){
+  if (key.indexOf('Position')===0) decodePositionBlob(blob);
+}
+
+function trackSessionKey(info){
+  const key = info && info.Meeting && info.Meeting.Circuit && info.Meeting.Circuit.Key;
+  if (key && key !== circuitKey){ circuitKey = key; fetchCircuitMap(key); }
+}
+
+function inflateBlob(b64){
+  const bin = atob(b64), bytes = new Uint8Array(bin.length);
+  for (let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  return JSON.parse(new TextDecoder().decode(pako.inflateRaw(bytes)));
+}
+
+function decodePositionBlob(b64){
+  if (!b64 || typeof b64 !== 'string') return;
+  try{
+    const parsed = inflateBlob(b64);
+    const frames = parsed && parsed.Position;
+    if (!Array.isArray(frames) || !frames.length) return;
+    const latest = frames[frames.length-1];
+    if (!latest || !latest.Entries) return;
+    const now = performance.now();
+    for (const num in latest.Entries){
+      const e = latest.Entries[num];
+      if (typeof e.X !== 'number' || typeof e.Y !== 'number') continue;
+      const prev = carAnim[num];
+      if (!prev){ carAnim[num] = {sx:e.X, sy:e.Y, tx:e.X, ty:e.Y, st:now, dur:300}; continue; }
+      const t = Math.min(1, (now - prev.st) / prev.dur);
+      const cx = prev.sx + (prev.tx - prev.sx) * t, cy = prev.sy + (prev.ty - prev.sy) * t;
+      carAnim[num] = {sx:cx, sy:cy, tx:e.X, ty:e.Y, st:now, dur: prev._interval ? Math.min(1200, Math.max(180, prev._interval)) : 300, _interval: now - prev.st};
+    }
+  }catch(e){}
+}
+
+async function fetchCircuitMap(key){
+  try{
+    const year = new Date().getFullYear();
+    const res = await fetch(`https://api.multiviewer.app/api/v1/circuits/${key}/${year}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!Array.isArray(data.x) || !data.x.length) return;
+    track = { x:data.x, y:data.y, corners:data.corners||[], rotation: data.rotation || 0 };
+    document.getElementById('trackHint').innerHTML = '<b>Active:</b> Drag to pan, Scroll to zoom.<br>Click any car to lock camera.';
+  }catch(e){
+    document.getElementById('trackHint').textContent = 'Failed loading circuit map vector';
+  }
+}
+
+const cv = document.getElementById('trackCanvas'), ctx = cv.getContext('2d');
+function resizeCanvas(){
+  const wrap = document.getElementById('trackView');
+  cv.width = wrap.clientWidth * devicePixelRatio; cv.height = wrap.clientHeight * devicePixelRatio;
+  cv.style.width = wrap.clientWidth+'px'; cv.style.height = wrap.clientHeight+'px';
+}
+window.addEventListener('resize', resizeCanvas);
+
+function getBaseFit(){
+  if (!track) return {minX:0, minY:0, w:1000, h:1000, scale:1, cx:cv.width/2, cy:cv.height/2};
+  const xs = track.x, ys = track.y;
+  const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+  const w=maxX-minX||1, h=maxY-minY||1, pad=60*devicePixelRatio;
+  return {minX, minY, w, h, scale: Math.min((cv.width-pad*2)/w,(cv.height-pad*2)/h), cx: cv.width/2, cy: cv.height/2};
+}
+
+function project(x, y, f){
+  let px = f.cx + (x - f.minX - f.w/2) * f.scale * zoom + panX;
+  let py = f.cy - (y - f.minY - f.h/2) * f.scale * zoom + panY;
+  return { x: px, y: py };
+}
+
+function drawTrack(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  if (!track){
+    ctx.fillStyle = '#84838c'; ctx.font = (13*devicePixelRatio)+'px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(circuitKey ? 'Loading circuit layout...' : 'Waiting for session circuit key...', cv.width/2, cv.height/2);
+    return;
+  }
+  
+  let f = getBaseFit();
+
+  // Handle Driver Locking Camera Auto-Pan
+  if (isLockedToDriver && selectedDriver && carAnim[selectedDriver]) {
+    const ca = carAnim[selectedDriver];
+    const now = performance.now();
+    const t = Math.min(1, (now - ca.st) / ca.dur);
+    const curX = ca.sx + (ca.tx - ca.sx) * t;
+    const curY = ca.sy + (ca.ty - ca.sy) * t;
+    
+    // Target world center offset
+    const targetScreenX = f.cx + (curX - f.minX - f.w/2) * f.scale * zoom;
+    const targetScreenY = f.cy - (curY - f.minY - f.h/2) * f.scale * zoom;
+    panX += (cv.width / 2 - targetScreenX) * 0.15; // Smooth spring dampening
+    panY += (cv.height / 2 - targetScreenY) * 0.15;
+  }
+
+  ctx.save();
+  // Handle Rotation Lock (Driver Heading relative rotation)
+  if (rotationMode === 'driver' && selectedDriver && carAnim[selectedDriver]) {
+    const ca = carAnim[selectedDriver];
+    const targetPos = project(ca.tx, ca.ty, f);
+    ctx.translate(targetPos.x, targetPos.y);
+    // Orient heading north relative to car movement angle
+    ctx.rotate(-Math.atan2(ca.ty - ca.sy, ca.tx - ca.sx) - Math.PI/2);
+    ctx.translate(-targetPos.x, -targetPos.y);
+  }
+
+  // Draw Track Border / Casing
+  ctx.strokeStyle = '#27272a'; ctx.lineWidth = 14*devicePixelRatio * Math.sqrt(zoom); ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.beginPath();
+  track.x.forEach((x,i)=>{ const p=project(x, track.y[i], f); i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y); });
+  ctx.stroke();
+
+  // Draw Main Track Surface
+  ctx.strokeStyle = '#52525b'; ctx.lineWidth = 10*devicePixelRatio * Math.sqrt(zoom);
+  ctx.stroke();
+
+  // Draw Corner Numbers
+  const cornerFontSize = Math.max(7, 9 * Math.sqrt(zoom));
+  (track.corners||[]).forEach(c=>{
+    const cx = c.trackPosition ? c.trackPosition.x : undefined, cy = c.trackPosition ? c.trackPosition.y : undefined;
+    if (cx===undefined) return;
+    const p = project(cx, cy, f);
+    if (p.x < -50 || p.x > cv.width+50 || p.y < -50 || p.y > cv.height+50) return; // Cull offscreen
+    ctx.fillStyle='#18181b'; ctx.beginPath(); ctx.arc(p.x,p.y,10*devicePixelRatio,0,7); ctx.fill();
+    ctx.strokeStyle='#3f3f46'; ctx.lineWidth = 1*devicePixelRatio; ctx.stroke();
+    ctx.fillStyle='#a1a1aa'; ctx.font=(cornerFontSize*devicePixelRatio)+'px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(c.number ?? '', p.x, p.y);
+  });
+
+  const now = performance.now();
+  const drivers = state.DriverList || {};
+  const R = 13*devicePixelRatio;
+  carScreenPos = {};
+
+  for (const num in carAnim){
+    const a = carAnim[num];
+    const t = Math.min(1, (now - a.st) / a.dur);
+    const x = a.sx + (a.tx - a.sx) * t, y = a.sy + (a.ty - a.sy) * t;
+    const drv = drivers[num] || {};
+    const p = project(x, y, f);
+    carScreenPos[num] = {x:p.x, y:p.y, r:R};
+    const color = drv.TeamColour ? '#'+drv.TeamColour.replace('#','') : '#eceae4';
+    const label = drv.Tla || num;
+    const isSelected = selectedDriver === num;
+    const hasSelection = selectedDriver !== null;
+
+    ctx.save();
+    // Dim non-selected drivers when someone is selected for tactical focus
+    if (hasSelection && !isSelected) {
+      ctx.globalAlpha = 0.25;
+    }
+
+    if (isSelected){
+      const pulse = 1 + 0.25 * Math.sin(now/180);
+      ctx.strokeStyle = '#facc15'; ctx.lineWidth = 3*devicePixelRatio;
+      ctx.beginPath(); ctx.arc(p.x,p.y,(R+10*devicePixelRatio)*pulse,0,Math.PI*2); ctx.stroke();
+    }
+
+    // Car Dot
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,R,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#ffffff'; ctx.lineWidth=2*devicePixelRatio; ctx.stroke();
+
+    // Driver TLA Label
+    ctx.fillStyle='#ffffff'; ctx.font='bold '+(9*devicePixelRatio)+'px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(label.slice(0,3), p.x, p.y);
+    ctx.restore();
+  }
+
+  ctx.restore();
+  requestAnimationFrame(drawTrack);
+}
+
+// --- Interaction Controls (Pan, Zoom, Box Zoom, Pinch-to-Zoom) ---
+
+let touchStartDist = null;
+
+cv.addEventListener('pointerdown', (e) => {
+  if (isBoxZoomActive) {
+    boxZoomStart = {x: e.clientX, y: e.clientY};
+    const rect = document.getElementById('boxZoomRect');
+    rect.style.left = e.clientX + 'px';
+    rect.style.top = e.clientY + 'px';
+    rect.style.width = '0px';
+    rect.style.height = '0px';
+    rect.style.display = 'block';
+    return;
+  }
+
+  if (e.pointerType === 'touch' && e.isPrimary === false) return;
+  isDragging = true;
+  cv.classList.add('dragging');
+  dragStart = { x: e.clientX, y: e.clientY };
+  panStart = { x: panX, y: panY };
+  cv.setPointerCapture(e.pointerId);
+});
+
+cv.addEventListener('pointermove', (e) => {
+  if (isBoxZoomActive && boxZoomStart) {
+    const x = Math.min(e.clientX, boxZoomStart.x);
+    const y = Math.min(e.clientY, boxZoomStart.y);
+    const w = Math.abs(e.clientX - boxZoomStart.x);
+    const h = Math.abs(e.clientY - boxZoomStart.y);
+    const rect = document.getElementById('boxZoomRect');
+    rect.style.left = x + 'px'; rect.style.top = y + 'px';
+    rect.style.width = w + 'px'; rect.style.height = h + 'px';
+    return;
+  }
+
+  if (!isDragging) return;
+  isLockedToDriver = false; // Break camera lock on manual pan
+  document.getElementById('lockModeToggle').classList.remove('active');
+
+  panX = panStart.x + (e.clientX - dragStart.x);
+  panY = panStart.y + (e.clientY - dragStart.y);
+});
+
+cv.addEventListener('pointerup', (e) => {
+  if (isBoxZoomActive && boxZoomStart) {
+    isBoxZoomActive = false;
+    document.getElementById('boxZoomToggle').classList.remove('active');
+    cv.classList.remove('box-zoom');
+    const rect = document.getElementById('boxZoomRect');
+    rect.style.display = 'none';
+
+    const endX = e.clientX, endY = e.clientY;
+    const w = Math.abs(endX - boxZoomStart.x), h = Math.abs(endY - boxZoomStart.y);
+    if (w > 20 && h > 20) {
+      // Execute Box Zoom transformation
+      const f = getBaseFit();
+      zoom *= Math.min(cv.width / w, cv.height / h);
+      panX += (cv.width / 2 - (boxZoomStart.x + endX)/2);
+      panY += (cv.height / 2 - (boxZoomStart.y + endY)/2);
+    }
+    boxZoomStart = null;
+    return;
+  }
+
+  if (!isDragging) return;
+  isDragging = false;
+  cv.classList.remove('dragging');
+  try { cv.releasePointerCapture(e.pointerId); } catch(err){}
+
+  // Check if it was a simple click to select a car
+  const moveDist = Math.hypot(e.clientX - dragStart.x, e.clientY - dragStart.y);
+  if (moveDist < 5) {
+    const rect = cv.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * devicePixelRatio, y = (e.clientY - rect.top) * devicePixelRatio;
+    let hit = null, hitDist = Infinity;
+    for (const num in carScreenPos){
+      const c = carScreenPos[num];
+      const d = Math.hypot(x - c.x, y - c.y);
+      if (d <= c.r * 2.5 && d < hitDist){ hit = num; hitDist = d; }
+    }
+    if (hit){ 
+      selectedDriver = (selectedDriver === hit) ? null : hit;
+      if (selectedDriver) {
+        isLockedToDriver = true;
+        document.getElementById('lockModeToggle').classList.add('active');
+      }
+    } else {
+      selectedDriver = null;
+      isLockedToDriver = false;
+      document.getElementById('lockModeToggle').classList.remove('active');
+    }
+  }
+});
+
+// Scroll Wheel Zoom
+cv.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  isLockedToDriver = false;
+  document.getElementById('lockModeToggle').classList.remove('active');
+
+  const factor = e.deltaY < 0 ? 1.15 : 0.85;
+  const newZoom = Math.max(0.2, Math.min(40, zoom * factor));
+  
+  // Zoom towards mouse cursor position
+  const rect = cv.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) * devicePixelRatio - cv.width/2;
+  const my = (e.clientY - rect.top) * devicePixelRatio - cv.height/2;
+  
+  panX = mx - (mx - panX) * (newZoom / zoom);
+  panY = my - (my - panY) * (newZoom / zoom);
+  zoom = newZoom;
+}, { passive: false });
+
+// Double click to zoom in centered
+cv.addEventListener('dblclick', (e) => {
+  isLockedToDriver = false;
+  const rect = cv.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) * devicePixelRatio - cv.width/2;
+  const my = (e.clientY - rect.top) * devicePixelRatio - cv.height/2;
+  zoom = Math.min(40, zoom * 1.8);
+  panX = mx - (mx - panX) * 1.8;
+  panY = my - (my - panY) * 1.8;
+});
+
+// --- Toolbar UI Action Bindings ---
+document.getElementById('zoomInBtn').addEventListener('click', () => { zoom = Math.min(40, zoom * 1.3); });
+document.getElementById('zoomOutBtn').addEventListener('click', () => { zoom = Math.max(0.2, zoom / 1.3); });
+document.getElementById('recenterBtn').addEventListener('click', () => {
+  zoom = 1; panX = 0; panY = 0; selectedDriver = null; isLockedToDriver = false;
+  document.getElementById('lockModeToggle').classList.remove('active');
+});
+
+document.getElementById('boxZoomToggle').addEventListener('click', () => {
+  isBoxZoomActive = !isBoxZoomActive;
+  const btn = document.getElementById('boxZoomToggle');
+  btn.classList.toggle('active', isBoxZoomActive);
+  cv.classList.toggle('box-zoom', isBoxZoomActive);
+});
+
+document.getElementById('lockModeToggle').addEventListener('click', () => {
+  isLockedToDriver = !isLockedToDriver;
+  document.getElementById('lockModeToggle').classList.toggle('active', isLockedToDriver);
+  if (!selectedDriver && activeCars.length > 0) {
+    selectedDriver = activeCars[0].racingNumber;
+  }
+});
+
+document.getElementById('rotationToggle').addEventListener('click', () => {
+  rotationMode = rotationMode === 'north' ? 'driver' : 'north';
+  document.getElementById('rotationToggle').classList.toggle('active', rotationMode === 'driver');
+});
+
+// Helper for computed active cars list
+const activeCars = [];
+
+resizeCanvas();
+connectMain();
+requestAnimationFrame(drawTrack);
+</script>
+</body>
+</html>

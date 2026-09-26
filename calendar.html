@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<script src="/app-shell.js"></script>
+<title>F1 Schedule</title>
+<style>
+  :root {
+    --bg-dark: #0a0a0c;
+    --text-main: #f3f4f6;
+    --text-muted: #9ca3af;
+    --text-dim: #6b7280;
+    --green: #10b981;
+    --purple: #a855f7;
+    --orange: #f59e0b;
+    --blue: #3b82f6;
+    --red: #ef4444;
+    --yellow: #eab308;
+    --accent: #3b82f6;
+    --scroll-track: rgba(0, 0, 0, 0.2);
+    --scroll-thumb: rgba(255, 255, 255, 0.15);
+    --scroll-thumb-hover: rgba(255, 255, 255, 0.25);
+    
+    /* Liquid Glass Variables */
+    --glass-bg: rgba(18, 18, 22, 0.55);
+    --glass-border: 1px solid rgba(255, 255, 255, 0.08);
+    --glass-border-glow: 0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+    --glass-shadow: 0 16px 40px 0 rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+    --glass-blur: blur(16px);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+  body {
+    background-color: var(--bg-dark);
+    background-image: 
+      radial-gradient(circle at 15% 15%, rgba(59, 130, 246, 0.05) 0%, transparent 40%),
+      radial-gradient(circle at 85% 85%, rgba(168, 85, 247, 0.04) 0%, transparent 40%),
+      radial-gradient(circle at 50% 50%, #0d0d11 0%, #050507 100%);
+    color: var(--text-main);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 12px;
+  }
+
+  /* Gracefully hide broken images without layout shifting */
+  img { text-indent: -10000px; }
+  img:not([src]), img[src=""], img:-moz-broken { display: none !important; }
+
+  * { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) var(--scroll-track); }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--scroll-track); }
+  ::-webkit-scrollbar-thumb { background-color: var(--scroll-thumb); border-radius: 4px; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-thumb-hover); }
+
+  .window { width: 100vw; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ---------- Unified Header ---------- */
+  .header {
+    position: relative;
+    z-index: 20;
+    background: rgba(20, 20, 25, 0.82);
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    flex-shrink: 0;
+  }
+  .mac-dots span { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; box-shadow: 0 0 4px rgba(0,0,0,0.3); }
+  .mac-dots .red { background: #ff5f56; }
+  .mac-dots .yellow { background: #ffbd2e; }
+  .mac-dots .green { background: #27c93f; }
+
+  .title-bar { margin-left: 5px; display: flex; gap: 12px; color: var(--text-muted); align-items: center; font-size: 12px; font-weight: 600; }
+  .title-bar b { color: var(--text-main); }
+  .f1-logo { display: inline-flex; width: 44px; height: 11px; flex-shrink: 0; opacity: 0.9; }
+
+  .header-actions { display: flex; gap: 8px; margin-left: auto; align-items: center; }
+  .clock-box { text-align: right; line-height: 1.2; margin-right: 8px; }
+  .clock-time { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-main); font-size: 12px; font-family: "SF Mono", Consolas, monospace; }
+  .clock-tz { color: var(--text-dim); font-size: 9.5px; }
+
+  .icon-btn {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-main);
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s ease;
+    backdrop-filter: blur(4px);
+  }
+  .icon-btn:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.15); transform: translateY(-1px); }
+  .icon-btn:active { transform: translateY(0); }
+  .icon-btn svg { width: 14px; height: 14px; }
+  .icon-btn.spinning svg { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+  .settings-pop {
+    position: absolute;
+    top: 50px; right: 20px;
+    background: #111316;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 10px;
+    box-shadow: 0 12px 28px rgba(0,0,0,0.5);
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 40;
+    min-width: 190px;
+  }
+  .settings-pop.open { display: flex; }
+  .settings-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 6px; border-radius: 6px; }
+  .settings-row:hover { background: rgba(255,255,255,0.04); }
+  .settings-row span { color: var(--text-main); font-size: 11px; }
+  
+  .toggle { width: 32px; height: 18px; background: #2b2f35; border-radius: 999px; position: relative; cursor: pointer; border: 1px solid rgba(255, 255, 255, 0.06); flex-shrink: 0; transition: background 0.2s; }
+  .toggle.on { background: var(--accent); border-color: rgba(255,255,255,0.18); }
+  .toggle::after { content: ""; position: absolute; top: 1px; left: 1px; width: 14px; height: 14px; border-radius: 50%; background: #f3f4f6; transition: left 0.15s ease; box-shadow: none; }
+  .toggle.on::after { left: 15px; }
+
+  .content-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px 40px; }
+
+  /* ---------- Hero ---------- */
+  .hero-panel {
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--glass-bg);
+    border: var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    min-height: 320px;
+  }
+  .hero-photo {
+    position: absolute; inset: 0;
+    background-size: cover; background-position: center;
+  }
+  .hero-photo .placeholder-art {
+    position: absolute; inset: 0; z-index: 0;
+    background: repeating-linear-gradient(100deg, #16181d 0px, #16181d 46px, #111316 46px, #111316 92px);
+  }
+  .hero-photo .hero-img {
+    position: absolute; inset: 0; z-index: 0;
+    width: 100%; height: 100%; object-fit: cover;
+    filter: blur(4px) brightness(0.7);
+    transform: scale(1.04);
+  }
+  .hero-photo .hero-scrim {
+    position: absolute; inset: 0; z-index: 1;
+    background: linear-gradient(180deg, rgba(10,10,12,0.1) 0%, rgba(10,10,12,0.6) 50%, rgba(10,10,12,0.95) 100%);
+  }
+  .hero-photo .placeholder-tag {
+    position: absolute; top: 14px; right: 16px; z-index: 1;
+    font-size: 10px; color: rgba(255,255,255,0.55);
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(255,255,255,0.1);
+    padding: 4px 9px; border-radius: 999px;
+    letter-spacing: 0.02em;
+    backdrop-filter: blur(4px);
+  }
+  .hero-overlay { position: relative; z-index: 2; padding: 26px 26px 20px; min-height: 320px; display: flex; flex-direction: column; justify-content: flex-end; gap: 16px; }
+
+  .hero-top-row { display: flex; align-items: center; gap: 10px; }
+  .hero-flag { width: 28px; height: 19px; object-fit: cover; border-radius: 3px; box-shadow: 0 2px 6px rgba(0,0,0,0.5); flex-shrink: 0; }
+  .hero-round { color: var(--text-muted); font-size: 11px; letter-spacing: 0.04em; font-weight: 600; text-transform: uppercase; }
+  .weekend-status {
+    margin-left: auto;
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; color: var(--text-muted);
+  }
+  .live-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(16, 185, 129, 0.12); color: var(--green);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    padding: 3px 10px; border-radius: 999px;
+    font-weight: 700; font-size: 10px; letter-spacing: 0.06em;
+    backdrop-filter: blur(4px);
+  }
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulse 1.4s ease-in-out infinite; }
+
+  .hero-h1 { margin: 0; font-size: 32px; line-height: 1.15; color: #fff; font-weight: 700; letter-spacing: -0.02em; text-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+  .hero-sub { color: var(--text-muted); font-size: 13px; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+  .hero-sub b { color: var(--text-main); font-weight: 600; }
+
+  .hero-countdown { font-size: 13px; color: var(--text-main); }
+  .hero-countdown .big-num { font-size: 24px; font-weight: 700; color: var(--yellow); font-family: "SF Mono", Consolas, monospace; text-shadow: 0 2px 10px rgba(234, 179, 8, 0.3); }
+  .hero-countdown .cd-label { color: var(--text-muted); font-size: 11px; }
+
+  .session-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+  .session-pill {
+    flex: 1 1 150px;
+    min-width: 130px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(8px);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 4px;
+    transition: all 0.2s ease;
+  }
+  .session-pill .s-name { font-size: 11.5px; font-weight: 600; color: var(--text-main); display: flex; align-items: center; gap: 6px; }
+  .session-pill .s-time { font-size: 10.5px; color: var(--text-muted); font-family: "SF Mono", Consolas, monospace; }
+  .session-pill.completed { opacity: 0.4; }
+  .session-pill.completed .s-name::before { content: "✓"; color: var(--green); }
+  .session-pill.live { background: rgba(16, 185, 129, 0.1); border-color: var(--green); box-shadow: 0 0 15px rgba(16, 185, 129, 0.15); }
+  .session-pill.live .s-name { color: var(--green); }
+  .session-pill.next { background: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.5); }
+  .session-pill.next .s-name { color: var(--blue); }
+  .session-pill.future { opacity: 0.8; }
+
+  /* ---------- Calendar section ---------- */
+  .section-head { display: flex; align-items: baseline; gap: 12px; margin: 32px 0 16px; }
+  .section-head h2 { margin: 0; font-size: 16px; color: #fff; font-weight: 600; letter-spacing: -0.01em; }
+  .section-head .season-tag { color: var(--text-dim); font-size: 11px; }
+  .section-head .grid-count { margin-left: auto; color: var(--text-dim); font-size: 11px; background: rgba(255,255,255,0.05); padding: 3px 8px; border-radius: 6px; }
+
+  .calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+  }
+
+  .race-card {
+    /* Solid-ish background instead of per-card backdrop-filter: with 24+ cards
+       in the grid, blurring behind every single one is very GPU-expensive and
+       was the main source of scroll/hover jank. */
+    background: #17171c;
+    border: var(--glass-border);
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    display: flex; flex-direction: column;
+  }
+  .race-card:hover { transform: translateY(-3px); border-color: rgba(255, 255, 255, 0.2); box-shadow: 0 12px 24px rgba(0,0,0,0.5); }
+  .race-card.is-past { opacity: 0.5; filter: grayscale(30%); }
+  .race-card.is-current { border-color: var(--green); box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.3), 0 10px 20px rgba(0,0,0,0.4); }
+
+  .card-photo { position: relative; height: 100px; overflow: hidden; }
+  .card-photo .card-placeholder-art { position: absolute; inset: 0; background: repeating-linear-gradient(115deg, #1b1e24 0 20px, #16181d 20px 40px); }
+  .card-photo .card-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s ease; }
+  .race-card:hover .card-img { transform: scale(1.05); }
+  .card-photo .card-scrim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(10,10,12,0.8) 100%); }
+  .card-photo .round-badge {
+    position: absolute; top: 10px; left: 10px;
+    background: rgba(0,0,0,0.6); color: var(--text-main); backdrop-filter: blur(4px);
+    font-size: 10px; font-weight: 700; padding: 4px 8px; border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .card-photo .sprint-badge {
+    position: absolute; top: 10px; right: 10px;
+    background: rgba(168, 85, 247, 0.2); color: #d8b4fe; backdrop-filter: blur(4px);
+    border: 1px solid rgba(168, 85, 247, 0.4);
+    font-size: 9.5px; font-weight: 700; padding: 4px 8px; border-radius: 6px;
+    letter-spacing: 0.04em;
+  }
+  .card-photo .card-flag {
+    position: absolute; bottom: 10px; left: 10px;
+    width: 24px; height: 16px; object-fit: cover; border-radius: 3px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+  }
+
+  .card-body { padding: 14px; display: flex; flex-direction: column; gap: 5px; }
+  .card-body .c-name { font-size: 13px; font-weight: 600; color: var(--text-main); line-height: 1.2; letter-spacing: -0.01em; }
+  .card-body .c-loc { font-size: 10.5px; color: var(--text-muted); }
+  .card-body .c-date { font-size: 10.5px; color: var(--text-dim); margin-top: 4px; font-weight: 500; }
+  .card-body .c-live { color: var(--green); font-weight: 700; background: rgba(16, 185, 129, 0.15); padding: 2px 6px; border-radius: 4px; margin-left: 4px; }
+
+  /* ---------- states ---------- */
+  .state-box { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 80px 20px; color: var(--text-muted); text-align: center; }
+  .state-box .spinner { width: 30px; height: 30px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--accent); animation: spin 0.8s linear infinite; }
+  .state-box .retry-btn { margin-top: 8px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); color: var(--text-main); padding: 8px 16px; border-radius: 6px; cursor: pointer; font: inherit; font-weight: 500; transition: background 0.15s; }
+  .state-box .retry-btn:hover { background: rgba(255,255,255,0.14); }
+
+  /* ---------- Modal ---------- */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(6px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: auto; }
+  .modal-window {
+    width: min(480px, 92vw);
+    max-height: 85vh;
+    overflow-y: auto;
+    background: rgba(18, 18, 22, 0.85);
+    backdrop-filter: var(--glass-blur);
+    border: var(--glass-border);
+    border-radius: 12px;
+    box-shadow: var(--glass-shadow);
+    transform: translateY(15px) scale(0.98);
+    transition: all 0.2s ease;
+  }
+  .modal-overlay.open .modal-window { transform: translateY(0) scale(1); }
+
+  .modal-head { padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; gap: 14px; align-items: flex-start; background: rgba(255,255,255,0.02); }
+  .modal-head .m-flag { width: 32px; height: 22px; object-fit: cover; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.4); margin-top: 2px; }
+  .modal-head .m-titles { flex: 1; }
+  .modal-head h3 { margin: 0 0 4px; font-size: 16px; color: #fff; letter-spacing: -0.01em; }
+  .modal-head .m-sub { font-size: 11.5px; color: var(--text-muted); }
+  .modal-close { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-main); width: 28px; height: 28px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.15s; }
+  .modal-close:hover { background: rgba(255,255,255,0.12); }
+
+  .modal-tz-note { margin: 16px 20px 0; font-size: 10.5px; color: var(--text-dim); background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 8px; text-align: center; }
+  .modal-sessions { list-style: none; margin: 16px 20px 24px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .modal-sessions li {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 14px; border-radius: 8px;
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+  }
+  .modal-sessions li.live { border-color: rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.1); box-shadow: 0 0 15px rgba(16, 185, 129, 0.1); }
+  .modal-sessions li.next { border-color: rgba(59, 130, 246, 0.4); background: rgba(59, 130, 246, 0.1); }
+  .modal-sessions li.completed { opacity: 0.5; }
+  .m-sess-name { font-size: 12.5px; font-weight: 600; color: var(--text-main); display: flex; align-items: center; gap: 8px; }
+  .m-sess-time { text-align: right; }
+  .m-sess-time .m-day { font-size: 10.5px; color: var(--text-muted); }
+  .m-sess-time .m-hour { font-size: 13.5px; font-weight: 700; color: #fff; font-family: "SF Mono", Consolas, monospace; }
+
+  @media (max-width: 720px) {
+    .hero-h1 { font-size: 26px; }
+    .content-scroll { padding: 14px 16px; }
+  }
+</style>
+</head>
+<body>
+  <script type="module" src="auth.js"></script>
+  <div class="window">
+    <header class="header">
+      <div class="mac-dots">
+        <span class="red"></span><span class="yellow"></span><span class="green"></span>
+      </div>
+      <div class="title-bar">
+        <span class="f1-logo" aria-label="Formula 1">
+          <img src="images/f1.png" alt="Formula 1 logo" width="100%" height="100%" />
+        </span>
+        <span style="color: rgba(255,255,255,0.2)">|</span>
+        <span id="seasonHeaderLabel">Schedule</span>
+      </div>
+      <div class="header-actions">
+        <div class="clock-box">
+          <div class="clock-time" id="clockTime">--:--:--</div>
+          <div class="clock-tz" id="clockTz">detecting timezone…</div>
+        </div>
+        <button class="icon-btn" id="refreshBtn" title="Refresh schedule">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+        </button>
+        <button class="icon-btn" id="settingsBtn" title="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        </button>
+      </div>
+      <div class="settings-pop" id="settingsPop">
+        <div class="settings-row">
+          <span>24-hour time</span>
+          <div class="toggle" id="toggle24h"></div>
+        </div>
+        <div class="settings-row">
+          <span>Dim past races</span>
+          <div class="toggle on" id="toggleDim"></div>
+        </div>
+      </div>
+    </header>
+
+    <main class="content-scroll">
+      <section id="heroSection" class="hero-panel">
+        <div class="state-box"><div class="spinner"></div><span>Loading schedule…</span></div>
+      </section>
+
+      <div class="section-head">
+        <h2>Full Season</h2>
+        <span class="season-tag" id="seasonTag"></span>
+        <span class="grid-count" id="gridCount"></span>
+      </div>
+      <div class="calendar-grid" id="calendarGrid"></div>
+    </main>
+  </div>
+
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal-window" id="modalWindow"></div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------------- config ---------------- */
+  const API_URL = "https://api.jolpi.ca/ergast/f1/current.json";
+  const FLAG_BASE = "https://cdn.jsdelivr.net/gh/hampusborgos/country-flags@main/svg/";
+
+  // Country name (as returned by the API) -> ISO 3166-1 alpha-2 code
+  const COUNTRY_CODES = {
+    "Australia": "au", "Austria": "at", "Azerbaijan": "az", "Bahrain": "bh",
+    "Belgium": "be", "Brazil": "br", "Canada": "ca", "China": "cn",
+    "France": "fr", "Germany": "de", "Hungary": "hu", "India": "in",
+    "Italy": "it", "Japan": "jp", "Korea": "kr", "South Korea": "kr",
+    "Malaysia": "my", "Mexico": "mx", "Monaco": "mc", "Netherlands": "nl",
+    "Portugal": "pt", "Qatar": "qa", "Russia": "ru", "Saudi Arabia": "sa",
+    "Singapore": "sg", "South Africa": "za", "Spain": "es", "Sweden": "se",
+    "Switzerland": "ch", "Turkey": "tr", "UAE": "ae", "United Arab Emirates": "ae",
+    "UK": "gb", "United Kingdom": "gb", "USA": "us", "United States": "us"
+  };
+
+  const CIRCUIT_IMAGES = {
+    albert_park: "images/calendar/australia.avif",
+    shanghai: "images/calendar/china.avif",
+    suzuka: "images/calendar/japan.avif",
+    miami: "images/calendar/miami.avif",
+    montreal: "images/calendar/canada.avif",
+    monaco: "images/calendar/monaco.avif",
+    barcelona: "https://commons.wikimedia.org/wiki/Special:FilePath/Circuit_de_Barcelona-Catalunya_%2827234302490%29.jpg?width=1200",
+    red_bull_ring: "images/calendar/austria.avif",
+    silverstone: "https://commons.wikimedia.org/wiki/Special:FilePath/Silverstone_Circuit_%2814624952224%29.jpg?width=1200",
+    spa_francorchamps: "images/calendar/belgium.avif",
+    hungaroring: "images/calendar/hungary.avif",
+    zandvoort: "images/calendar/netherlands.avif",
+    monza: "images/calendar/italy.avif",
+    madring: "images/calendar/madring.avif",
+    baku: "images/calendar/azerbaijan.avif",
+    sepang: "https://commons.wikimedia.org/wiki/Special:FilePath/Sepang_International_Circuit.JPG?width=1200",
+    singapore: "images/calendar/singapore.avif",
+    cota: "https://commons.wikimedia.org/wiki/Special:FilePath/Circuit_of_the_Americas_%2835888112245%29.jpg?width=1200",
+    mexico_city: "images/calendar/mexico.avif",
+    interlagos: "images/calendar/brazil.avif",
+    las_vegas: "https://commons.wikimedia.org/wiki/Special:FilePath/The_Strip%2C_Las_Vegas_-_April_2026.jpg?width=1200",
+    lusail: "images/calendar/qatar.avif",
+    yas_marina: "https://commons.wikimedia.org/wiki/Special:FilePath/Yas_Marina_Circuit%2C_October_12%2C_2018_SkySat_%28cropped%29.jpg?width=1200",
+    bahrain: "images/calendar/bahrain.avif"
+  };
+
+  const SESSION_META = {
+    FirstPractice:   { label: "Practice 1",        duration: 60 },
+    SecondPractice:  { label: "Practice 2",        duration: 60 },
+    ThirdPractice:   { label: "Practice 3",        duration: 60 },
+    SprintQualifying:{ label: "Sprint Qualifying", duration: 60 },
+    SprintShootout:  { label: "Sprint Qualifying", duration: 60 },
+    Sprint:          { label: "Sprint",            duration: 45 },
+    Qualifying:      { label: "Qualifying",        duration: 60 },
+    Race:            { label: "Race",              duration: 120 }
+  };
+
+  /* ---------------- state ---------------- */
+  let races = [];
+  let sessionsCache = []; // sessions per race, computed once per fetch instead of on every render
+  let seasonYear = "";
+  let use24h = false;
+  let dimPast = true;
+  let heroRaceRef = null;
+  let heroSessionsRef = null;
+  let lastHeroState = ""; // Prevents recreating DOM nodes unnecessarily 
+  let schedulePollTimer = null;
+
+  /* ---------------- helpers ---------------- */
+  function htmlSafe(value) {
+    return String(value === undefined || value === null ? "" : value).replace(/[&<>"']/g, function (ch) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+    });
+  }
+
+  function flagUrl(country) {
+    const code = COUNTRY_CODES[country];
+    return code ? FLAG_BASE + code + ".svg" : "";
+  }
+
+  function flagImgHtml(country, cls) {
+    const url = flagUrl(country);
+    if (!url) return '<div class="' + cls + '" style="background:rgba(255,255,255,0.1);border-radius:2px;"></div>';
+    return '<img class="' + cls + '" src="' + url + '" alt="' + htmlSafe(country) + ' flag" ' +
+           'loading="lazy" decoding="async" />';
+  }
+
+  function photoImgHtml(circuitId, cls, eager) {
+    const url = CIRCUIT_IMAGES[circuitId];
+    if (!url) return "";
+    return '<img class="' + cls + '" src="' + url + '" alt="" ' +
+           (eager ? 'loading="eager" fetchpriority="high"' : 'loading="lazy"') +
+           ' decoding="async" />';
+  }
+
+  function buildSessions(race) {
+    const list = [];
+    Object.keys(SESSION_META).forEach(function (key) {
+      const s = race[key];
+      if (s && s.date && s.time) {
+        const start = new Date(s.date + "T" + s.time);
+        list.push({
+          key: key,
+          label: SESSION_META[key].label,
+          start: start,
+          end: new Date(start.getTime() + SESSION_META[key].duration * 60000)
+        });
+      }
+    });
+    if (race.date && race.time) {
+      const raceStart = new Date(race.date + "T" + race.time);
+      if (!list.find(function (s) { return s.key === "Race"; })) {
+        list.push({ key: "Race", label: "Race", start: raceStart, end: new Date(raceStart.getTime() + 120 * 60000) });
+      }
+    }
+    list.sort(function (a, b) { return a.start - b.start; });
+    return list;
+  }
+
+  function raceStatus(sessions, now) {
+    if (!sessions.length) return { status: "upcoming", index: -1 };
+    const last = sessions[sessions.length - 1];
+    if (now > last.end) return { status: "completed", index: -1 };
+    for (let i = 0; i < sessions.length; i++) {
+      if (now >= sessions[i].start && now <= sessions[i].end) {
+        return { status: "live", index: i };
+      }
+    }
+    for (let i = 0; i < sessions.length; i++) {
+      if (now < sessions[i].start) return { status: "upcoming", index: i };
+    }
+    return { status: "completed", index: -1 };
+  }
+
+  function fmtTime(date) {
+    return date.toLocaleTimeString(undefined, use24h
+      ? { hour: "2-digit", minute: "2-digit", hour12: false }
+      : { hour: "numeric", minute: "2-digit", hour12: true });
+  }
+  
+  function fmtDay(date) {
+    return date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  }
+  
+  function fmtRange(startDate, endDate) {
+    const sameMonth = startDate.getMonth() === endDate.getMonth();
+    const optsDay = { day: "numeric" };
+    const optsFull = { month: "short", day: "numeric" };
+    const startStr = startDate.toLocaleDateString(undefined, sameMonth ? optsDay : optsFull);
+    const endStr = endDate.toLocaleDateString(undefined, optsFull);
+    return startStr + " – " + endStr;
+  }
+  
+  function pad(n) { return n < 10 ? "0" + n : "" + n; }
+  
+  function fmtCountdown(ms) {
+    if (ms < 0) ms = 0;
+    const totalSec = Math.floor(ms / 1000);
+    const d = Math.floor(totalSec / 86400);
+    const h = Math.floor((totalSec % 86400) / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    if (d > 0) return d + "d " + pad(h) + "h " + pad(m) + "m";
+    return pad(h) + ":" + pad(m) + ":" + pad(s);
+  }
+
+  /* ---------------- clock ---------------- */
+  // The timezone never changes during a page session, so resolve it once
+  // instead of constructing a new Intl.DateTimeFormat every single tick.
+  const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const clockTimeEl = document.getElementById("clockTime");
+  const clockTzEl = document.getElementById("clockTz");
+  clockTzEl.textContent = localTz;
+
+  function tickClock() {
+    const now = new Date();
+    clockTimeEl.textContent = fmtTime(now).replace(/^0/, "");
+  }
+
+  /* ---------------- hero ---------------- */
+  function pickFeaturedRace(now) {
+    for (let i = 0; i < races.length; i++) {
+      const sessions = sessionsCache[i];
+      const st = raceStatus(sessions, now);
+      if (st.status !== "completed") return { race: races[i], sessions: sessions, status: st };
+    }
+    if (races.length) {
+      const lastIdx = races.length - 1;
+      return { race: races[lastIdx], sessions: sessionsCache[lastIdx], status: { status: "completed", index: -1 } };
+    }
+    return null;
+  }
+
+  function renderHero() {
+    const now = new Date();
+    const featured = pickFeaturedRace(now);
+    const hero = document.getElementById("heroSection");
+    
+    // Reset state key to force dom rebuild of pills
+    lastHeroState = ""; 
+    
+    if (!featured) {
+      hero.innerHTML = '<div class="state-box">No races found for this season.</div>';
+      return;
+    }
+    heroRaceRef = featured.race;
+    heroSessionsRef = featured.sessions;
+
+    const race = featured.race;
+    const loc = race.Circuit.Location;
+    const country = loc.country;
+    const sessions = featured.sessions;
+    const first = sessions[0], last = sessions[sessions.length - 1];
+
+    const html = [];
+    const hasHeroPhoto = !!CIRCUIT_IMAGES[race.Circuit.circuitId];
+    html.push('<div class="hero-photo">');
+    if (!hasHeroPhoto) html.push('<div class="placeholder-art"></div>');
+    html.push(photoImgHtml(race.Circuit.circuitId, "hero-img", true));
+    html.push('<div class="hero-scrim"></div>');
+    if (!hasHeroPhoto) html.push('<div class="placeholder-tag">circuit photo placeholder</div>');
+    html.push('</div>');
+
+    html.push('<div class="hero-overlay">');
+    html.push('<div class="hero-top-row">');
+    html.push(flagImgHtml(country, "hero-flag"));
+    html.push('<span class="hero-round">Round ' + race.round + ' / ' + races.length + '</span>');
+    html.push('<div class="weekend-status" id="weekendStatus"></div>');
+    html.push('</div>');
+
+    html.push('<h1 class="hero-h1">' + htmlSafe(race.raceName) + '</h1>');
+    html.push('<div class="hero-sub"><b>' + fmtRange(first.start, last.start) + '</b> &nbsp;•&nbsp; ' +
+               htmlSafe(loc.locality) + ', ' + htmlSafe(country) + '</div>');
+
+    html.push('<div class="hero-countdown" id="heroCountdown"></div>');
+    html.push('<div class="session-row" id="heroSessionRow"></div>');
+    html.push('</div>');
+
+    hero.innerHTML = html.join("");
+    updateHeroLive();
+  }
+
+  function updateHeroLive() {
+    if (!heroRaceRef) return;
+    const now = new Date();
+    const sessions = heroSessionsRef;
+    const st = raceStatus(sessions, now);
+    const stateKey = st.status + "-" + st.index;
+
+    const statusBox = document.getElementById("weekendStatus");
+    const cdBox = document.getElementById("heroCountdown");
+    const rowBox = document.getElementById("heroSessionRow");
+    if (!statusBox || !cdBox || !rowBox) return;
+
+    // Fast path: Only update the exact countdown text every second
+    if (st.status === "live") {
+      const remain = sessions[st.index].end - now;
+      cdBox.innerHTML = '<span class="big-num">' + fmtCountdown(remain) + '</span> <span class="cd-label">remaining in ' + htmlSafe(sessions[st.index].label) + '</span>';
+    } else if (st.status === "upcoming") {
+      cdBox.innerHTML = '<span class="big-num">' + fmtCountdown(sessions[st.index].start - now) + '</span> <span class="cd-label">until ' + htmlSafe(sessions[st.index].label) + '</span>';
+    }
+
+    // Slow path: Only redraw DOM structural elements if the actual phase of the weekend changed
+    if (lastHeroState !== stateKey) {
+      lastHeroState = stateKey;
+      
+      if (st.status === "live") {
+        statusBox.innerHTML = '<span class="live-chip"><span class="live-dot"></span>LIVE — ' + htmlSafe(sessions[st.index].label) + '</span>';
+      } else if (st.status === "upcoming") {
+        statusBox.innerHTML = '<span class="cd-label">Next session</span>';
+      } else {
+        statusBox.innerHTML = '<span class="cd-label">Season complete</span>';
+        cdBox.innerHTML = '<span class="cd-label">This was the final round of the season.</span>';
+      }
+
+      rowBox.innerHTML = sessions.map(function (s, i) {
+        let cls = "future";
+        if (now > s.end) cls = "completed";
+        else if (now >= s.start && now <= s.end) cls = "live";
+        else if (st.status === "upcoming" && i === st.index) cls = "next";
+        
+        let labelIcon = "";
+        if (cls === "live") labelIcon = '<span class="live-dot" style="width:5px;height:5px;"></span> ';
+        
+        return '<div class="session-pill ' + cls + '">' +
+               '<div class="s-name">' + labelIcon + htmlSafe(s.label) + '</div>' +
+               '<div class="s-time">' + fmtDay(s.start) + ' · ' + fmtTime(s.start) + '</div>' +
+               '</div>';
+      }).join("");
+    }
+  }
+
+  /* ---------------- calendar grid ---------------- */
+  function renderCalendar() {
+    const now = new Date();
+    const grid = document.getElementById("calendarGrid");
+    document.getElementById("seasonTag").textContent = seasonYear + " season";
+    document.getElementById("gridCount").textContent = races.length + " races";
+    document.getElementById("seasonHeaderLabel").textContent = seasonYear + " Schedule";
+
+    grid.innerHTML = races.map(function (race, idx) {
+      const sessions = sessionsCache[idx];
+      const st = raceStatus(sessions, now);
+      const loc = race.Circuit.Location;
+      const first = sessions[0], last = sessions[sessions.length - 1];
+      const hasSprint = !!race.Sprint;
+      const hasCardPhoto = !!CIRCUIT_IMAGES[race.Circuit.circuitId];
+      let cardCls = "race-card";
+      if (st.status === "completed" && dimPast) cardCls += " is-past";
+      if (st.status === "live") cardCls += " is-current";
+
+      return (
+        '<div class="' + cardCls + '" data-idx="' + idx + '">' +
+          '<div class="card-photo">' +
+            (!hasCardPhoto ? '<div class="card-placeholder-art"></div>' : '') +
+            photoImgHtml(race.Circuit.circuitId, "card-img", false) +
+            '<div class="card-scrim"></div>' +
+            '<div class="round-badge">R' + race.round + '</div>' +
+            (hasSprint ? '<div class="sprint-badge">SPRINT</div>' : '') +
+            flagImgHtml(loc.country, "card-flag") +
+          '</div>' +
+          '<div class="card-body">' +
+            '<div class="c-name">' + htmlSafe(race.raceName) + '</div>' +
+            '<div class="c-loc">' + htmlSafe(loc.locality) + ', ' + htmlSafe(loc.country) + '</div>' +
+            '<div class="c-date">' + fmtRange(first.start, last.start) +
+              (st.status === "live" ? ' <span class="c-live">LIVE</span>' : '') +
+            '</div>' +
+          '</div>' +
+        '</div>'
+      );
+    }).join("");
+  }
+
+  // Use event delegation for grid clicks to avoid memory leak and excess listeners
+  document.getElementById("calendarGrid").addEventListener("click", function (e) {
+    const card = e.target.closest(".race-card");
+    if (card) {
+      const idx = parseInt(card.getAttribute("data-idx"), 10);
+      if (races[idx]) openModal(idx);
+    }
+  });
+
+  /* ---------------- modal ---------------- */
+  function openModal(idx) {
+    const race = races[idx];
+    const now = new Date();
+    const sessions = sessionsCache[idx];
+    const st = raceStatus(sessions, now);
+    const loc = race.Circuit.Location;
+
+    const html = [];
+    html.push('<div class="modal-head">');
+    html.push(flagImgHtml(loc.country, "m-flag"));
+    html.push('<div class="m-titles"><h3>' + htmlSafe(race.raceName) + '</h3>' +
+      '<div class="m-sub">' + htmlSafe(race.Circuit.circuitName) + ' · ' + htmlSafe(loc.locality) + ', ' + htmlSafe(loc.country) + '</div></div>');
+    html.push('<button class="modal-close" id="modalCloseBtn">&#10005;</button>');
+    html.push('</div>');
+
+    html.push('<div class="modal-tz-note">Showing session times converted to your local timezone (' + htmlSafe(localTz) + ').</div>');
+
+    html.push('<ul class="modal-sessions">');
+    sessions.forEach(function (s, i) {
+      let cls = "";
+      if (now > s.end) cls = "completed";
+      else if (now >= s.start && now <= s.end) cls = "live";
+      else if (st.status === "upcoming" && i === st.index) cls = "next";
+      html.push('<li class="' + cls + '">' +
+        '<span class="m-sess-name">' + htmlSafe(s.label) + (cls === "live" ? ' <span style="color:var(--green);font-size:10px;margin-left:6px;"><span class="live-dot" style="display:inline-block;width:5px;height:5px;"></span> LIVE</span>' : '') + '</span>' +
+        '<span class="m-sess-time"><div class="m-day">' + fmtDay(s.start) + '</div><div class="m-hour">' + fmtTime(s.start) + '</div></span>' +
+        '</li>');
+    });
+    html.push('</ul>');
+
+    document.getElementById("modalWindow").innerHTML = html.join("");
+    document.getElementById("modalCloseBtn").addEventListener("click", closeModal);
+    document.getElementById("modalOverlay").classList.add("open");
+  }
+
+  function closeModal() {
+    document.getElementById("modalOverlay").classList.remove("open");
+  }
+
+  document.getElementById("modalOverlay").addEventListener("click", function (e) {
+    if (e.target.id === "modalOverlay") closeModal();
+  });
+
+  /* ---------------- fetch ---------------- */
+  function showError(msg) {
+    document.getElementById("heroSection").innerHTML =
+      '<div class="state-box">' +
+        '<span>' + htmlSafe(msg) + '</span>' +
+        '<button class="retry-btn" id="retryBtn">Retry Connection</button>' +
+      '</div>';
+    document.getElementById("retryBtn").addEventListener("click", loadSchedule);
+    document.getElementById("calendarGrid").innerHTML = "";
+  }
+
+  function loadSchedule() {
+    if (schedulePollTimer) clearTimeout(schedulePollTimer);
+    const refreshBtn = document.getElementById("refreshBtn");
+    refreshBtn.classList.add("spinning");
+    
+    fetch(API_URL)
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        const table = data.MRData && data.MRData.RaceTable;
+        if (!table || !table.Races || !table.Races.length) throw new Error("No race data returned");
+        races = table.Races;
+        sessionsCache = races.map(buildSessions);
+        seasonYear = table.season || "";
+        renderHero();
+        renderCalendar();
+        
+        // Re-queue successful fetch for 5 minutes
+        schedulePollTimer = setTimeout(loadSchedule, 5 * 60 * 1000); 
+      })
+      .catch(function (err) {
+        showError("Couldn't load the schedule (" + err.message + "). Check your connection and try again.");
+        // Re-queue failed fetch for 10 seconds
+        schedulePollTimer = setTimeout(loadSchedule, 10 * 1000);
+      })
+      .then(function () {
+        refreshBtn.classList.remove("spinning");
+      });
+  }
+
+  /* ---------------- settings ---------------- */
+  document.getElementById("settingsBtn").addEventListener("click", function () {
+    document.getElementById("settingsPop").classList.toggle("open");
+  });
+  
+  document.addEventListener("click", function (e) {
+    const pop = document.getElementById("settingsPop");
+    if (!pop.contains(e.target) && e.target.id !== "settingsBtn" && !document.getElementById("settingsBtn").contains(e.target)) {
+      pop.classList.remove("open");
+    }
+  });
+  
+  document.getElementById("toggle24h").addEventListener("click", function () {
+    use24h = !use24h;
+    this.classList.toggle("on", use24h);
+    if (races.length) { renderHero(); renderCalendar(); }
+  });
+  
+  document.getElementById("toggleDim").addEventListener("click", function () {
+    dimPast = !dimPast;
+    this.classList.toggle("on", dimPast);
+    if (races.length) renderCalendar();
+  });
+  
+  document.getElementById("refreshBtn").addEventListener("click", loadSchedule);
+
+  /* ---------------- boot ---------------- */
+  tickClock();
+  updateHeroLive();
+  // Single 1s heartbeat instead of two competing intervals doing their own
+  // separate `new Date()` + DOM work on every tick.
+  setInterval(function () {
+    tickClock();
+    updateHeroLive(); // only touches structural DOM when state actually changes
+  }, 1000);
+  loadSchedule();
+})();
+</script>
+</body>
+</html>

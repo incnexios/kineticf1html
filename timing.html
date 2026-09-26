@@ -1,0 +1,2717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<title>Live Timing Widget</title>
+<!-- GridStack CSS -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/gridstack.js/10.1.2/gridstack.min.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/gridstack.js/10.1.2/gridstack-extra.min.css" />
+ <script>
+        // Check if the user agent matches common mobile devices
+        if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+            // Redirect to your mobile site URL
+            window.location.replace("/mobile-timing.html");
+        }
+    </script>
+<!-- Pako Decompression for Pitwall Live Telemetry & Positions -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+<style>
+  :root {
+    --bg-dark: #0a0a0c;
+    --panel-bg: rgba(22, 22, 26, 0.65);
+    --panel-bg-2: rgba(16, 16, 20, 0.75);
+    --row-border: rgba(255, 255, 255, 0.05);
+    --text-main: #f3f4f6;
+    --text-muted: #9ca3af;
+    --text-dim: #6b7280;
+    --green: #10b981;
+    --purple: #a855f7;
+    --orange: #f59e0b;
+    --blue: #3b82f6;
+    --red: #ef4444;
+    --yellow: #eab308;
+    --magenta: #ec4899;
+    --accent: #3b82f6;
+    --scroll-track: rgba(0, 0, 0, 0.2);
+    --scroll-thumb: rgba(255, 255, 255, 0.15);
+    --scroll-thumb-hover: rgba(255, 255, 255, 0.25);
+    
+    /* Liquid Glass Variables */
+    --glass-bg: rgba(18, 18, 22, 0.55);
+    --glass-border: 1px solid rgba(255, 255, 255, 0.08);
+    --glass-border-glow: 0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+    --glass-shadow: 0 16px 40px 0 rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+    --glass-blur: blur(16px);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { min-height: 100%; margin: 0; padding: 0; }
+  body {
+    background-color: var(--bg-dark);
+    background-image: 
+      radial-gradient(circle at 15% 15%, rgba(59, 130, 246, 0.05) 0%, transparent 40%),
+      radial-gradient(circle at 85% 85%, rgba(168, 85, 247, 0.04) 0%, transparent 40%),
+      radial-gradient(circle at 50% 50%, #0d0d11 0%, #050507 100%);
+    color: var(--text-main);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 12px;
+    overflow-x: hidden;
+    min-height: 100vh;
+    padding-bottom: 80px;
+  }
+
+  /* Gracefully hide broken images without layout shifting */
+  img { text-indent: -10000px; }
+  img:not([src]), img[src=""], img:-moz-broken { display: none !important; }
+
+  * { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) var(--scroll-track); }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--scroll-track); }
+  ::-webkit-scrollbar-thumb { background-color: var(--scroll-thumb); border-radius: 4px; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-thumb-hover); }
+
+  .backdrop-hint {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-dim); font-size: 11px; letter-spacing: .04em;
+    pointer-events: none;
+    user-select: none;
+    text-align: center;
+    padding: 0 20px;
+    z-index: 0;
+  }
+
+  /* ---------------- GridStack Container & Liquid Glass Widgets ---------------- */
+  .grid-stack {
+    padding: 20px;
+    min-height: calc(100vh - 40px);
+    z-index: 10;
+  }
+
+  .grid-stack-item-content {
+    background: rgba(17, 19, 22, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    position: absolute;
+    inset: 0;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    will-change: transform;
+  }
+
+  .grid-stack-item-content:hover {
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 20px 50px 0 rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+  }
+
+  /* Legacy fallback wrappers styled as grid items */
+  .widget-window {
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .widget-header {
+    position: relative;
+    z-index: 20;
+    background: rgba(20, 20, 25, 0.82);
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    flex-shrink: 0;
+    cursor: grab;
+    user-select: none;
+    overflow: visible;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .widget-header:active { cursor: grabbing; }
+
+  .mac-dots span { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; box-shadow: 0 0 4px rgba(0,0,0,0.3); }
+  .mac-dots .red { background: #ff5f56; }
+  .mac-dots .yellow { background: #ffbd2e; }
+  .mac-dots .green { background: #27c93f; }
+
+  .widget-title-bar { display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+  .widget-title-bar .name { color: var(--text-main); font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; letter-spacing: -0.01em; }
+  .widget-title-bar .sub { color: var(--text-muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
+
+  .live-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(16, 185, 129, 0.12); color: var(--green);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    padding: 2px 8px; border-radius: 999px;
+    font-weight: 700; font-size: 9.5px; letter-spacing: 0.06em;
+    flex-shrink: 0;
+    backdrop-filter: blur(4px);
+  }
+  .live-chip.bad { background: rgba(239, 68, 68, 0.12); color: var(--red); border-color: rgba(239, 68, 68, 0.3); }
+  .live-chip.connecting { background: rgba(234, 179, 8, 0.12); color: var(--yellow); border-color: rgba(234, 179, 8, 0.3); }
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .lap-clock { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }
+  .lap-clock .clk { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-main); font-size: 11.5px; font-family: "SF Mono", Consolas, monospace; }
+  .lap-clock .lc { color: var(--text-dim); font-size: 9px; }
+
+  .widget-header-actions { display: flex; gap: 6px; margin-left: auto; align-items: center; flex-shrink: 0; }
+  body.widgets-locked .widget-header,
+  body.widgets-locked .tool-header { cursor: default; }
+
+  .icon-btn {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-main);
+    width: 24px; height: 24px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+    backdrop-filter: blur(4px);
+  }
+  .icon-btn:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.15); transform: translateY(-1px); }
+  .icon-btn:active { transform: translateY(0); }
+  .icon-btn svg { width: 12px; height: 12px; }
+
+  .reconnect-bar {
+    display: none;
+    background: rgba(239, 68, 68, 0.15); color: #fca5a5; font-size: 11px;
+    padding: 6px 12px; text-align: center; justify-content: center; align-items: center; gap: 10px;
+    flex-shrink: 0; backdrop-filter: blur(4px); border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+  }
+  .reconnect-bar.show { display: flex; }
+  .reconnect-bar button { background: #ef4444; color: #fff; border: none; border-radius: 4px; padding: 3px 9px; font-size: 10.5px; font-weight: 600; cursor: pointer; }
+
+  .widget-body {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    background: transparent;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    contain: layout paint;
+    transform: translateZ(0);
+    will-change: scroll-position;
+  }
+  .widget-body.collapsed { display: none; }
+
+  .tool-settings-pop {
+    position: absolute; top: 42px; right: 8px; z-index: 300;
+    display: none; min-width: 220px; padding: 10px;
+    background: #111316;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    box-shadow: 0 12px 28px rgba(0,0,0,0.5);
+    color: var(--text-main);
+  }
+  .tool-settings-pop.open { display: block; }
+  .tool-settings-pop label { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 2px; color: #d1d5db; font-size: 10.5px; }
+  .tool-settings-pop input[type="range"] { width: 90px; accent-color: var(--accent); }
+  .tool-settings-pop select { min-width: 105px; padding: 3px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #ddd; border-radius: 4px; }
+  
+  .live-widget {
+    padding: 10px;
+    background: transparent;
+    overflow: hidden;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    contain: layout paint;
+    transform: translateZ(0);
+  }
+  .live-widget h3 {
+    margin: 0 0 8px;
+    color: var(--text-muted);
+    font-size: 9.5px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .live-widget .widget-empty { color: var(--text-dim); text-align: center; padding: 28px 6px; font-style: italic; }
+  
+  .battle-table, .pit-table { width: 100%; border-collapse: collapse; }
+  .battle-table td, .pit-table td { padding: 4px 3px; border: 0; font-size: 11px; }
+  .battle-table td:nth-child(2), .battle-table td:nth-child(4) { font-weight: 600; }
+  .battle-table .metric, .pit-table .metric { color: var(--text-muted); font-size: 10px; }
+  .driver-visual { display: inline-flex; align-items: center; gap: 5px; min-width: 42px; vertical-align: middle; }
+  .driver-visual .driver-team-logo { width: 24px; height: 15px; object-fit: contain; opacity: .9; }
+  .driver-visual .driver-number-logo { width: 25px; height: 17px; object-fit: contain; }
+  .driver-visual .driver-number-fallback { color: var(--text-dim); font: 10px "SF Mono", Consolas, monospace; }
+  .driver-identity { display: inline-flex; align-items: center; gap: 6px; }
+  .driver-identity .driver-tla { font-weight: 700; }
+  .battle-driver-identity { display: inline-flex; align-items: center; gap: 6px; min-width: 76px; }
+  .battle-driver-portrait { width: 42px; height: 42px; object-fit: contain; object-position: center bottom; border: 0; background: transparent; }
+  .battle-driver-identity .driver-tla { font-weight: 700; }
+  .battle-gap { color: var(--yellow); font-weight: 600; }
+  .battle-diff-positive { color: var(--green); }
+  .battle-diff-negative { color: var(--red); }
+  
+  .flying-driver { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .flying-time { color: var(--yellow); font: 600 18px "SF Mono", Consolas, monospace; }
+  .sector-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+  .sector-box { padding: 6px 4px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; text-align: center; }
+  .sector-box span { display: block; color: var(--text-dim); font-size: 9px; margin-bottom: 2px; }
+  .sector-box strong { font: 11px "SF Mono", Consolas, monospace; }
+  
+  .live-widget select { width: 100%; margin-bottom: 8px; padding: 5px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: var(--text-main); font-size: 11px; }
+  .race-list, .radio-list { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; contain: layout paint; transform: translateZ(0); will-change: scroll-position; }
+  .race-item, .radio-item { padding: 6px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.04); font-size: 10.5px; }
+  .race-item:last-child, .radio-item:last-child { border-bottom: 0; }
+  .race-meta, .radio-meta { color: var(--text-dim); font-size: 9px; margin-bottom: 2px; }
+  .race-flag { width: 16px; height: 16px; object-fit: contain; vertical-align: middle; margin-right: 5px; }
+  
+  .radio-table { width: 100%; border-collapse: collapse; }
+  .radio-table th, .radio-table td { padding: 5px; text-align: left; border-bottom: 1px solid rgba(255, 255, 255, 0.04); font-size: 10.5px; }
+  .radio-table th { position: sticky; top: 0; background: rgba(18, 18, 22, 0.9); backdrop-filter: blur(4px); color: var(--text-muted); z-index: 1; font-weight: 600; }
+  .radio-table td { color: var(--text-main); word-break: break-word; white-space: normal; }
+  .radio-message-block { display: flex; flex-direction: column; gap: 4px; }
+  .radio-transcript-list { display: flex; flex-direction: column; gap: 4px; }
+  .radio-transcript-line { padding: 4px 6px; border-radius: 5px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.04); color: #eef2ff; line-height: 1.35; }
+  .radio-transcript-line small { display: inline-block; margin-right: 6px; color: #a5b4fc; font-weight: 700; letter-spacing: 0.04em; }
+  .radio-driver-cell { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .radio-driver-cell .driver-visual { min-width: 36px; }
+  .radio-driver-cell .driver-team-logo { width: 22px; height: 14px; }
+  .radio-driver-cell .driver-number-logo { width: 24px; height: 16px; }
+  .radio-table td:last-child { width: 38px; text-align: center; }
+  
+  .now-playing-banner { padding: 6px; margin-bottom: 6px; color: #fff; text-align: center; font-size: 10px; font-weight: 600; border-radius: 4px; }
+  .play-button { min-width: 26px; padding: 3px 6px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 4px; color: #fff; cursor: pointer; transition: background 0.15s; }
+  .play-button:hover { background: rgba(255, 255, 255, 0.16); }
+  
+  .tyre-stints-widget { height: 100%; overflow: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; contain: layout paint; transform: translateZ(0); will-change: scroll-position; }
+  .driver-list-timeline { display: flex; flex-direction: column; gap: 3px; }
+  .driver-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; cursor: pointer; border-radius: 6px; transition: background 0.15s; }
+  .driver-row:hover { background: rgba(255, 255, 255, 0.04); }
+  .driver-info { display: flex; align-items: center; gap: 6px; width: 58px; flex-shrink: 0; }
+  .driver-info .position { width: 16px; text-align: center; color: var(--text-dim); font-size: 10px; }
+  .driver-info .tla { font-weight: 700; font-size: 11px; }
+  .stint-timeline { display: flex; flex: 1; height: 20px; align-items: center; min-width: 0; gap: 1px; }
+  .stint-segment { position: relative; height: 100%; display: flex; align-items: center; }
+  .stint-line { position: absolute; width: 100%; height: 4px; top: 50%; transform: translateY(-50%); border-radius: 2px; }
+  .stint-pill { position: relative; z-index: 1; display: flex; gap: 2px; align-items: center; padding: 1px 4px; border-radius: 8px; color: #000; font-weight: 700; font-size: 8.5px; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+  
+  .tyre-soft { background: #ef4444; } .tyre-medium { background: #eab308; } .tyre-hard { background: #f3f4f6; color: #111 !important; }
+  .tyre-intermediate { background: #10b981; } .tyre-wet { background: #3b82f6; } .tyre-unknown { background: #6b7280; }
+  
+  .tyre-detail { border-top: 1px solid rgba(255, 255, 255, 0.06); margin-top: 8px; padding-top: 8px; }
+  .tyre-detail table { width: 100%; border-collapse: collapse; }
+  .tyre-detail td { padding: 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.03); font-size: 10px; color: var(--text-muted); }
+  
+  .track-status-widget { height: 100%; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; background: rgba(255, 255, 255, 0.02); }
+  .track-status-widget .flag-text { font-weight: 700; font-size: 20px; letter-spacing: 0.05em; color: #fff; }
+  .track-status-widget.flag-off { background: rgba(255, 255, 255, 0.02); border-color: rgba(255, 255, 255, 0.08); }
+  .track-status-widget.flag-green { background: rgba(16, 185, 129, 0.2); border-color: var(--green); }
+  .track-status-widget.flag-green .flag-text, .track-status-widget.flag-yellow .flag-text { color: #fff; }
+  .track-status-widget.flag-yellow { background: rgba(234, 179, 8, 0.2); border-color: var(--yellow); animation: flash-yellow 1s infinite step-end; }
+  .track-status-widget.flag-red { background: rgba(239, 68, 68, 0.2); border-color: var(--red); animation: flash-red .8s infinite step-end; }
+  .track-status-widget.flag-safety-car { border-width: 2px; animation: safety-car 1s infinite step-end; }
+  @keyframes flash-yellow { 50% { background: rgba(255, 255, 255, 0.02); border-color: rgba(255, 255, 255, 0.08); } }
+  @keyframes flash-red { 50% { background: rgba(255, 255, 255, 0.02); border-color: rgba(255, 255, 255, 0.08); } }
+  @keyframes safety-car { 50% { border-color: transparent; } }
+  
+  .weather-widget { height: 100%; overflow: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; contain: layout paint; transform: translateZ(0); will-change: scroll-position; }
+  .weather-list { display: flex; flex-direction: column; gap: 4px; }
+  .weather-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.03); }
+  .weather-item:last-child { border-bottom: 0; }
+  .label-container { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 11px; }
+  .weather-icon { width: 14px; color: var(--text-dim); text-align: center; }
+  .weather-item .value { color: var(--text-main); font: 600 11px "SF Mono", Consolas, monospace; transition: color .2s, background .2s; padding: 2px 5px; border-radius: 4px; background: rgba(255, 255, 255, 0.03); }
+  .weather-item .value-changed { color: #111; background: var(--yellow); }
+  
+  .track-map-widget { position: relative; height: 100%; min-height: 0; padding: 0; overflow: hidden; background: radial-gradient(ellipse at center, #1a1a26 0%, #0a0a10 70%); display: flex; flex-direction: column; }
+  .track-map-stage { position: relative; min-height: 150px; flex: 1; overflow: hidden; }
+  .track-map-widget canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+  .track-map-widget canvas.dragging { cursor: grabbing; }
+  .track-map-top-center {
+    position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 8px; align-items: center; z-index: 20; pointer-events: none;
+  }
+  .track-map-pill {
+    display: flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px;
+    font-size: 11px; font-weight: 700; letter-spacing: .04em; background: rgba(24,24,32,0.85);
+    border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(10px); pointer-events: auto;
+  }
+  .track-map-pill .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .track-map-pill.conn-live { color: #4ade80; }
+  .track-map-pill.conn-live .dot { background: #22c55e; box-shadow: 0 0 8px rgba(34,197,94,0.8); }
+  .track-map-pill.conn-offline { color: #f87171; }
+  .track-map-pill.conn-offline .dot { background: #ef4444; }
+  .track-map-pill.flag { display: none; }
+  .track-map-pill.flag.visible { display: flex; }
+  .track-map-controls-left, .track-map-controls-right {
+    position: absolute; top: 16px; z-index: 20; display: flex; flex-direction: column; gap: 8px;
+  }
+  .track-map-controls-left { left: 16px; align-items: center; }
+  .track-map-controls-right { right: 16px; }
+  .track-map-ctrl-btn {
+    width: 40px; height: 40px; background: rgba(24,24,32,0.85); border: 1px solid rgba(255,255,255,0.08);
+    color: #E7EAEE; border-radius: 10px; cursor: pointer; display: flex; justify-content: center; align-items: center;
+    backdrop-filter: blur(10px); box-shadow: 0 4px 10px -2px rgba(0,0,0,0.4); transition: background .15s;
+    touch-action: none;
+  }
+  .track-map-ctrl-btn:hover { background: rgba(40,40,52,0.95); }
+  .track-map-ctrl-btn:active { background: rgba(52,52,66,0.95); }
+  .track-map-ctrl-btn svg { width: 18px; height: 18px; }
+  .track-map-compass-btn { position: relative; cursor: grab; border-radius: 50%; }
+  .track-map-compass-btn.dragging { cursor: grabbing; }
+  .track-map-compass-n {
+    position: absolute; top: 3px; left: 50%; transform: translateX(-50%);
+    font-size: 8px; font-weight: 800; color: #71717a; letter-spacing: .05em; pointer-events: none;
+  }
+  .track-map-compass-needle {
+    width: 3px; height: 15px; background: linear-gradient(#ef4444 50%, #52525b 50%);
+    border-radius: 2px; transform-origin: 50% 50%; pointer-events: none;
+  }
+  .track-map-dir-pad {
+    display: grid; grid-template-columns: repeat(3, 22px); grid-template-rows: repeat(3, 22px); gap: 2px;
+    padding: 5px; background: rgba(24,24,32,0.85); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px; backdrop-filter: blur(10px); box-shadow: 0 4px 10px -2px rgba(0,0,0,0.4);
+  }
+  .track-map-dir-btn {
+    display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05);
+    border: none; border-radius: 5px; color: #A1A1AA; font-size: 10px; font-weight: 800; letter-spacing: .02em;
+    cursor: pointer; padding: 0; transition: background .15s, color .15s;
+  }
+  .track-map-dir-btn:hover { background: rgba(255,255,255,0.14); color: #E7EAEE; }
+  .track-map-dir-btn.active { background: #3b82f6; color: #fff; }
+  .track-map-dir-n { grid-column: 2; grid-row: 1; }
+  .track-map-dir-w { grid-column: 1; grid-row: 2; }
+  .track-map-dir-e { grid-column: 3; grid-row: 2; }
+  .track-map-dir-s { grid-column: 2; grid-row: 3; }
+  .track-map-bottom-right {
+    position: absolute; right: 16px; bottom: 16px; z-index: 20; display: flex; flex-direction: column; gap: 8px; align-items: flex-end;
+  }
+  .track-map-weather-chip {
+    display: none; align-items: center; gap: 10px; background: rgba(24,24,32,0.85); border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(10px); border-radius: 10px; padding: 8px 14px; font-size: 12px;
+  }
+  .track-map-weather-chip.visible { display: flex; }
+  .track-map-weather-chip .item { display: flex; align-items: center; gap: 5px; }
+  .track-map-weather-chip .label { color: #71717a; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+  .track-map-weather-chip .value { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .track-map-weather-chip .wind-arrow { display: inline-block; transition: transform .3s ease; }
+  .track-map-weather-chip .sep { width: 1px; height: 16px; background: rgba(255,255,255,0.1); }
+  .track-map-driver-strip {
+    position: absolute; left: 16px; right: 16px; bottom: 16px; z-index: 21; display: none;
+    align-items: center; gap: 16px; border: 1px solid rgba(255,255,255,0.08); background: rgba(20,20,28,0.92);
+    backdrop-filter: blur(10px); color: #E7EAEE; padding: 10px 16px; border-radius: 12px; font-size: 13px;
+    box-shadow: 0 8px 24px -4px rgba(0,0,0,0.5);
+  }
+  .track-map-driver-strip.visible { display: flex; }
+  .track-map-driver-strip .tla { font-weight: 800; font-size: 16px; border-left: 4px solid #888; padding-left: 8px; }
+  .track-map-driver-strip .field { display: flex; flex-direction: column; gap: 1px; min-width: 68px; }
+  .track-map-driver-strip .field .label { font-size: 10px; color: #71717a; text-transform: uppercase; letter-spacing: .04em; }
+  .track-map-driver-strip .field .value { font-weight: 600; }
+  .track-map-driver-strip .strip-close { margin-left: auto; border: none; background: transparent; color: #71717a; font-size: 18px; cursor: pointer; line-height: 1; }
+  .track-map-loading-text {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: rgba(231,234,238,0.35);
+    font-size: 14px; font-weight: 600; z-index: 5; pointer-events: none;
+  }
+  
+  /* ================== TELEMETRY DASHBOARD ================== */
+  .telemetry-container {
+    padding: 12px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: transparent;
+    overflow-y: auto;
+  }
+  .telemetry-top-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .telemetry-select {
+    background: #1b2233; color: #e6ebf5; border: 1px solid #232c40; border-radius: 6px;
+    padding: 5px 8px; font-weight: 600; font-size: 11px; outline: none; flex: 1; min-width: 0;
+  }
+  .telemetry-status-pill {
+    font-size: 9px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+    background: rgba(255,255,255,0.05); flex-shrink: 0;
+  }
+  .telemetry-status-pill.live { color: #4ade80; border: 1px solid rgba(74,222,128,0.3); }
+  .telemetry-status-pill.off { color: #ef4444; border: 1px solid rgba(248,113,113,0.3); }
+
+  .telemetry-shift-lights {
+    display: flex; justify-content: space-between; width: 100%; height: 7px;
+    background: rgba(255,255,255,0.04); border-radius: 4px; overflow: hidden; padding: 0 2px; gap: 3px;
+  }
+  .telemetry-led { flex: 1; background: rgba(255,255,255,0.1); border-radius: 2px; transition: background 0.05s ease; }
+  .telemetry-led.green.lit { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
+  .telemetry-led.red.lit { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+  .telemetry-led.blue.lit { background: #3b82f6; box-shadow: 0 0 6px #3b82f6; }
+
+  .telemetry-dash-grid {
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; text-align: center;
+    gap: 6px; background: rgba(15, 20, 32, 0.7); border: 1px solid #232c40; border-radius: 12px; padding: 10px;
+  }
+  .telemetry-metric { display: flex; flex-direction: column; align-items: center; }
+  .telemetry-metric .label { font-size: 9px; color: #8592ad; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+  .telemetry-metric .value { font-size: 20px; font-weight: 800; font-family: ui-monospace, monospace; }
+
+  .telemetry-gear-box {
+    font-size: 46px; font-weight: 900; font-family: ui-monospace, monospace; line-height: 1;
+    color: #fff; text-shadow: 0 0 14px rgba(255,255,255,0.3); min-width: 48px;
+  }
+
+  .telemetry-pedals { display: flex; flex-direction: column; gap: 6px; }
+  .telemetry-pedal-group { display: flex; flex-direction: column; gap: 2px; }
+  .telemetry-pedal-label { display: flex; justify-content: space-between; font-size: 9.5px; font-weight: 600; color: #8592ad; }
+  .telemetry-bar-track { width: 100%; height: 7px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; }
+  .telemetry-bar-fill { height: 100%; width: 0%; transition: width 0.05s linear; }
+  .telemetry-bar-fill.throttle { background: linear-gradient(90deg, #4ade80, #22c55e); }
+  .telemetry-bar-fill.brake { background: linear-gradient(90deg, #f87171, #dc2626); }
+
+  /* ---------------- Settings popover ---------------- */
+  .settings-pop {
+    position: absolute;
+    top: 42px; right: 10px;
+    background: #111316;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 10px;
+    box-shadow: 0 12px 28px rgba(0,0,0,0.5);
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 300;
+    min-width: 240px;
+    max-height: 400px;
+    overflow-y: auto;
+    color: var(--text-main);
+  }
+  .settings-pop.open { display: flex; }
+  .settings-pop .settings-title { color: var(--text-dim); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; padding: 4px 6px 6px; font-weight: 600; }
+  .settings-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 6px; border-radius: 6px; }
+  .settings-row:hover { background: rgba(255,255,255,0.04); }
+  .settings-row span { color: var(--text-main); font-size: 11px; }
+  
+  .toggle { width: 32px; height: 18px; background: #2b2f35; border-radius: 999px; position: relative; cursor: pointer; border: 1px solid rgba(255, 255, 255, 0.06); flex-shrink: 0; transition: background 0.2s; }
+  .toggle.on { background: var(--accent); border-color: rgba(255,255,255,0.18); }
+  .toggle::after { content: ""; position: absolute; top: 1px; left: 1px; width: 14px; height: 14px; border-radius: 50%; background: #f3f4f6; transition: left 0.15s ease; box-shadow: none; }
+  .toggle.on::after { left: 15px; }
+  .settings-slider { width: 90px; accent-color: var(--accent); }
+  .settings-divider { height: 1px; background: rgba(255, 255, 255, 0.06); margin: 6px 4px; }
+
+  /* ---------------- Timing table ---------------- */
+  .widget.timing-table { padding: 0; height: 100%; display: flex; flex-direction: column; }
+  .widget.timing-table .widget-body { overflow: auto; flex: 1; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; contain: layout paint; transform: translateZ(0); will-change: scroll-position; }
+
+  table { width: 100%; border-collapse: collapse; }
+
+  th, td {
+    padding: 6px 8px;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    white-space: nowrap;
+    font-size: 11px;
+  }
+
+  th {
+    background-color: rgba(15, 15, 18, 0.85);
+    backdrop-filter: blur(8px);
+    color: var(--text-muted);
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    letter-spacing: 0.03em;
+    font-size: 10px;
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  th.compact-header, td.compact-header { text-align: center; }
+
+  td { background-color: transparent; color: var(--text-main); height: 2.8em; vertical-align: middle; }
+
+  tr:nth-child(2n) td { background-color: rgba(255, 255, 255, 0.01); }
+  tr:hover td { background-color: rgba(255, 255, 255, 0.03); }
+  tr.disabled-driver td { opacity: .5; color: var(--text-dim); }
+  tr.inpit-row td { opacity: .8; }
+
+  .lap-overall-best { color: var(--purple); font-weight: 700; text-shadow: 0 0 10px rgba(168, 85, 247, 0.3); }
+  .lap-personal-best { color: var(--green); font-weight: 700; }
+  .lap-slower { color: var(--yellow); font-weight: 700; }
+  .lap-no-reference { color: var(--text-main); }
+  .fastest { color: var(--magenta); font-weight: 700; text-shadow: 0 0 10px rgba(236, 72, 153, 0.3); }
+  .personal { color: var(--purple); font-weight: 700; }
+  .tyre-age { color: var(--text-dim); font-size: .85em; }
+
+  .knocked-out-pos { color: var(--red); font-weight: 700; margin-right: 4px; }
+  .driver-pos { margin-right: 4px; font-weight: 600; color: var(--text-muted); }
+
+  .at-risk-elimination td { background-color: rgba(239, 68, 68, 0.15) !important; }
+  .selected-driver td { background-color: rgba(168, 85, 247, 0.2) !important; border-top: 1px solid rgba(168, 85, 247, 0.3); border-bottom: 1px solid rgba(168, 85, 247, 0.3); }
+  tr.disabled-driver td {
+    background-color: rgba(10, 10, 12, 0.4) !important;
+    color: var(--text-dim);
+    opacity: .35;
+  }
+
+  .driver-cell { display: flex; align-items: center; gap: 6px; }
+  .team-swatch { width: 3px; height: 16px; border-radius: 1.5px; flex-shrink: 0; box-shadow: 0 0 6px currentColor; }
+  .team-logo { width: 22px; height: 14px; object-fit: contain; flex-shrink: 0; opacity: 0.85; }
+  .driver-tla { font-weight: 700; letter-spacing: 0.02em; }
+  .driver-num { color: var(--text-dim); font-size: .85em; font-family: "SF Mono", Consolas, monospace; }
+  .driver-number-logo { width: 22px; height: 16px; object-fit: contain; vertical-align: middle; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
+  .driver-number-fallback { display: inline; }
+
+  .tire-badge { display: inline-block; width: 18px; height: 18px; object-fit: contain; vertical-align: middle; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); }
+
+  .time-cell-content { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; }
+  .time-row { display: flex; justify-content: center; align-items: baseline; gap: 4px; width: 100%; min-height: 1.2em; }
+  .time-value { display: inline-block; font-family: "SF Mono", Consolas, monospace; font-size: .95em; line-height: 1.1; text-align: right; flex-shrink: 0; }
+
+  .minisector-row { width: 100%; margin-top: 2px; min-height: .6em; line-height: 1; }
+  .minisector-container { display: flex; gap: 1px; height: .5em; align-items: center; justify-content: center; }
+  .minisector { display: inline-block; width: 4px; height: .5em; border-radius: 1px; background-color: rgba(255, 255, 255, 0.1); }
+  .minisector-set { background-color: var(--yellow); box-shadow: 0 0 4px rgba(234, 179, 8, 0.5); }
+  .minisector-unknown { background-color: rgba(255, 255, 255, 0.1); }
+  .minisector-pb { background-color: var(--green); box-shadow: 0 0 4px rgba(16, 185, 129, 0.5); }
+  .minisector-ob { background-color: var(--purple); box-shadow: 0 0 4px rgba(168, 85, 247, 0.5); }
+  .minisector-pit { background-color: var(--blue); }
+
+  .empty-state td { text-align: center; padding: 32px; color: var(--text-dim); font-style: italic; }
+
+  .widget-footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+    background: rgba(12, 12, 15, 0.7);
+    backdrop-filter: blur(10px);
+    font-size: 10px;
+    color: var(--text-dim);
+    flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+  .widget-footer .legend-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+  
+  .layout-pop { display: block; position: static; min-width: 240px; padding: 0; background: transparent; border: 0; box-shadow: none; }
+  .layout-pop .layout-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+  .layout-pop button, .layout-pop select { width: 100%; padding: 6px 8px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; color: var(--text-main); font-size: 10.5px; cursor: pointer; transition: background 0.15s; }
+  .layout-pop button:hover { background: rgba(255, 255, 255, 0.1); }
+  .layout-pop .layout-status { color: var(--text-dim); font-size: 9px; margin-top: 8px; text-align: center; }
+  
+  #layoutControls { position: fixed; top: 16px; right: 16px; z-index: 300; }
+  #layoutControls > .icon-btn { background: rgba(20, 20, 25, 0.8); width: 32px; height: 32px; border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 10px 30px rgba(0,0,0,0.5); backdrop-filter: blur(12px); }
+  #layoutControls > .icon-btn svg { width: 16px; height: 16px; }
+  #layoutControls > .icon-btn img { width: 16px; height: 16px; object-fit: contain; filter: invert(1); }
+  #layoutControls .layout-pop { display: none; position: absolute; top: 40px; right: 0; min-width: 280px; padding: 12px; background: #111316; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; box-shadow: none; }
+  #layoutControls.open .layout-pop { display: block; }
+  
+  .widget-hidden { display: none !important; }
+  
+  #widgetDock { position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 250; display: flex; gap: 6px; justify-content: center; pointer-events: none; }
+  #widgetDock:empty { display: none; }
+  #widgetDock button { pointer-events: auto; padding: 6px 12px; background: rgba(20, 20, 25, 0.85); backdrop-filter: blur(12px); color: var(--text-muted); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; cursor: pointer; font-size: 11px; font-weight: 500; box-shadow: 0 10px 25px rgba(0,0,0,0.5); transition: all 0.15s; }
+  #widgetDock button:hover { color: #fff; background: rgba(30, 30, 38, 0.95); border-color: rgba(255, 255, 255, 0.2); transform: translateY(-2px); }
+  
+  body.widgets-locked .grid-stack-item { pointer-events: auto; }
+  body.widgets-locked .grid-stack-item .ui-resizable-handle { display: none !important; }
+
+  @media (max-width: 720px) {
+      .grid-stack { padding: 10px; }
+  }
+</style>
+</head>
+<body>
+  <div class="backdrop-hint">Connecting to the live F1 timing feed…</div>
+
+  <!-- GridStack Container Structure -->
+  <div class="grid-stack">
+    
+    <!-- MAIN TIMING TABLE WIDGET -->
+    <div class="grid-stack-item" gs-id="timingWindow" gs-x="0" gs-y="0" gs-w="8" gs-h="8" gs-min-w="5" gs-min-h="4">
+      <div class="grid-stack-item-content">
+        <div class="widget-header" id="widgetHeader">
+          <div class="mac-dots">
+            <span class="red"></span><span class="yellow"></span><span class="green"></span>
+          </div>
+          <div class="widget-title-bar">
+            <span class="name" id="meetingName">Connecting…</span>
+            <span class="sub" id="sessionName">—</span>
+          </div>
+          <span class="live-chip connecting" id="liveChip"><span class="live-dot"></span><span id="liveChipLabel">CONNECTING</span></span>
+          <div class="lap-clock">
+            <span class="clk" id="clockEl">--:--:--</span>
+            <span class="lc" id="lapCountEl"></span>
+          </div>
+          <div class="widget-header-actions">
+            <button class="icon-btn" id="lockWidgetsBtn" title="Lock widgets">
+              <svg id="lockWidgetsIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10" width="14" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+            </button>
+            <button class="icon-btn" id="collapseBtn" title="Collapse">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+            </button>
+            <button class="icon-btn" id="settingsBtn" title="Settings">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            </button>
+          </div>
+
+          <div class="settings-pop" id="settingsPop">
+            <div class="settings-title">Columns</div>
+            <div class="settings-row"><span>Driver number</span><div class="toggle on" data-key="showNumber"></div></div>
+            <div class="settings-row"><span>Tire compound</span><div class="toggle on" data-key="showTire"></div></div>
+            <div class="settings-row"><span>Best lap</span><div class="toggle on" data-key="showBest"></div></div>
+            <div class="settings-row"><span>Last lap</span><div class="toggle on" data-key="showLast"></div></div>
+            <div class="settings-row"><span>Gap to leader</span><div class="toggle on" data-key="showGap"></div></div>
+            <div class="settings-row"><span>Interval</span><div class="toggle on" data-key="showInterval"></div></div>
+            <div class="settings-row"><span>Pit stops</span><div class="toggle on" data-key="showPitstopCount"></div></div>
+            <div class="settings-divider"></div>
+            <div class="settings-title">Sectors</div>
+            <div class="settings-row"><span>Best sectors</span><div class="toggle on" data-key="showBestSectors"></div></div>
+            <div class="settings-row"><span>Last sectors</span><div class="toggle on" data-key="showLastSectors"></div></div>
+            <div class="settings-row"><span>Minisectors</span><div class="toggle on" data-key="showMinisectors"></div></div>
+            <div class="settings-divider"></div>
+            <div class="settings-row"><span>Font size</span><input type="range" class="settings-slider" id="fontSlider" min="50" max="150" step="10" value="90" /></div>
+          </div>
+        </div>
+
+        <div class="reconnect-bar" id="reconnectBar">
+          <span id="reconnectMsg">Connection lost.</span>
+          <button id="retryBtn">Retry now</button>
+        </div>
+
+        <div class="widget-body" id="widgetBody">
+          <div class="widget timing-table">
+            <table id="timingTable" style="font-size: 90%">
+              <thead id="tableHead"></thead>
+              <tbody id="tableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="widget-footer">
+          <span><span class="legend-dot" style="background:var(--green)"></span>Personal best</span>
+          <span><span class="legend-dot" style="background:var(--purple)"></span>Overall best</span>
+          <span><span class="legend-dot" style="background:var(--yellow)"></span>Just set</span>
+          <span><span class="legend-dot" style="background:var(--blue)"></span>Pit</span>
+          <span style="margin-left:auto" id="footerHint">Click row to compare gaps</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- BATTLE WIDGET -->
+    <div class="grid-stack-item" gs-id="battleWindow" gs-x="8" gs-y="0" gs-w="4" gs-h="3" gs-min-w="3" gs-min-h="2">
+      <div class="grid-stack-item-content">
+        <div class="widget-header tool-header">
+          <div class="mac-dots"><span class="red"></span><span class="yellow"></span><span class="green"></span></div>
+          <div class="widget-title-bar"><span class="name">Battle</span><span class="sub">Live gap comparison</span></div>
+          <div class="widget-header-actions">
+            <button class="icon-btn tool-settings" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
+          </div>
+          <div class="tool-settings-pop"><label>Auto select <input type="checkbox" id="battleAuto" checked></label><label>Gap threshold <input type="range" id="battleThreshold" min="0.5" max="5" step="0.1" value="1.5"></label><label>Selected battle <select id="battleSelect"><option value="">Auto</option></select></label></div>
+        </div>
+        <div class="widget-body"><section class="live-widget" id="battleWidget"><h3>Battle</h3><div class="widget-empty">Waiting for close battles…</div></section></div>
+      </div>
+    </div>
+
+    <!-- FLYING LAP WIDGET -->
+    <div class="grid-stack-item" gs-id="flyingLapWindow" gs-x="8" gs-y="3" gs-w="4" gs-h="3" gs-min-w="3" gs-min-h="2">
+      <div class="grid-stack-item-content">
+        <div class="widget-header tool-header">
+          <div class="mac-dots"><span class="red"></span><span class="yellow"></span><span class="green"></span></div>
+          <div class="widget-title-bar"><span class="name">Flying Lap</span><span class="sub">Sector progress</span></div>
+          <div class="widget-header-actions">
+            <button class="icon-btn tool-settings" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l-.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
+          </div>
+          <div class="tool-settings-pop"><label>Auto select <input type="checkbox" id="flyingAuto" checked></label><label>Selected driver <select id="flyingSelect"><option value="">Auto</option></select></label><label>Font size <input type="range" id="flyingFont" min="50" max="200" step="10" value="90"></label></div>
+        </div>
+        <div class="widget-body"><section class="live-widget" id="flyingLapWidget"><h3>Flying Lap</h3><div class="widget-empty">Waiting for sector data…</div></section></div>
+      </div>
+    </div>
+
+    <!-- TRACK STATUS WIDGET -->
+    <div class="grid-stack-item" gs-id="trackStatusWindow" gs-x="8" gs-y="6" gs-w="2" gs-h="2" gs-min-w="2" gs-min-h="2">
+      <div class="grid-stack-item-content">
+        <div class="widget-header tool-header">
+          <div class="mac-dots"><span class="red"></span><span class="yellow"></span><span class="green"></span></div>
+          <div class="widget-title-bar"><span class="name">Track Status</span><span class="sub">Flag state</span></div>
+          <div class="widget-header-actions">
+          </div>
+        </div>
+        <div class="widget-body"><section class="live-widget" id="trackStatusWidget"><div class="track-status-widget flag-off"><span class="flag-text">UNKNOWN</span></div></section></div>
+      </div>
+    </div>
+
+    <!-- WEATHER WIDGET -->
+    <div class="grid-stack-item" gs-id="weatherWindow" gs-x="10" gs-y="6" gs-w="2" gs-h="3" gs-min-w="2" gs-min-h="2">
+      <div class="grid-stack-item-content">
+        <div class="widget-header tool-header">
+          <div class="mac-dots"><span class="red"></span><span class="yellow"></span><span class="green"></span></div>
+          <div class="widget-title-bar"><span class="name">Weather</span><span class="sub">Conditions</span></div>
+          <div class="widget-header-actions">
+            <button class="icon-btn tool-settings" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l-.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
+          </div>
+          <div class="tool-settings-pop"><label>Font size <input type="range" id="weatherFont" min="50" max="150" step="10" value="90"></label><label>Air temperature <input type="checkbox" id="weatherAirTemp" checked></label><label>Track temperature <input type="checkbox" id="weatherTrackTemp" checked></label><label>Humidity <input type="checkbox" id="weatherHumidity" checked></label><label>Pressure <input type="checkbox" id="weatherPressure" checked></label><label>Wind speed <input type="checkbox" id="weatherWindSpeed" checked></label><label>Wind direction <input type="checkbox" id="weatherWindDirection" checked></label><label>Rainfall <input type="checkbox" id="weatherRainfall" checked></label></div>
+        </div>
+        <div class="widget-body"><section class="live-widget weather-widget" id="weatherWidget"><h3>Weather</h3><div class="widget-empty">Waiting for weather data…</div></section></div>
+      </div>
+    </div>
+
+    <!-- PIT STRATEGY WIDGET -->
+    <div class="grid-stack-item" gs-id="pitStrategyWindow" gs-x="0" gs-y="8" gs-w="4" gs-h="3" gs-min-w="3" gs-min-h="2">
+      <div class="grid-stack-item-content">
+        <div class="widget-header tool-header">
+          <div class="mac-dots"><span class="red"></span><span class="yellow"></span><span class="green"></span></div>
+          <div class="widget-title-bar"><span class="name">Pit Strategy</span><span class="sub">Projected pit loss</span></div>
+          <div class="widget-header-actions">
+            <button class="icon-btn tool-settings" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l-.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
+          </div>
+          <div class="tool-settings-pop"><label>Selected driver <select id="pitDriver"><option value="">Leader</option></select></label><label>Font size <input type="range" id="pitFont" min="50" max="150" step="10" value="90"></label></div>
+        </div>
+        <div class="widget-body"><section class="live-widget" id="pitStrategyWidget"><h3>Pit Strategy</h3><div class="widget-empty">Race strategy unavailable</div></section></div>
+      </div>
+    </div>
+
+    <!-- RACE CONTROL WIDGET -->
+    <div class="grid-stack-item" gs-id="raceControlWindow" gs-x="4" gs-y="8" gs-w="4" gs-h="4" gs-min-w="3" gs-min-h="2">
+      <div class="grid-stack-item-content">
+        <div class="widget-header tool-header">
+          <div class="mac-dots"><span class="red"></span><span class="yellow"></span><span class="green"></span></div>
+          <div class="widget-title-bar"><span class="name">Race Control</span><span class="sub">Live messages</span></div>
+          <div class="widget-header-actions">
+            <button class="icon-btn tool-settings" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l-.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
+          </div>
+          <div class="tool-settings-pop"><label>Show timestamp <input type="checkbox" id="raceShowTimestamp" checked></label><label>Show category <input type="checkbox" id="raceShowCategory" checked></label><label><span>Flags</span><input type="checkbox" class="race-category" value="Flag" checked></label><label><span>Sectors</span><input type="checkbox" class="race-category" value="Sector" checked></label><label><span>Other</span><input type="checkbox" class="race-category" value="Other" checked></label><label><span>Overtake</span><input type="checkbox" class="race-category" value="Overtake" checked></label><label><span>Safety Car</span><input type="checkbox" class="race-category" value="SafetyCar" checked></label><label>Font size <input type="range" id="raceFont" min="50" max="150" step="10" value="90"></label></div>
+        </div>
+        <div class="widget-body"><section class="live-widget" id="raceControlWidget"><h3>Race Control</h3><div class="widget-empty">Waiting for messages…</div></section></div>
+      </div>
+    </div>
+
+    <!-- TEAM RADIO WIDGET -->
+    <div class="grid-stack-item" gs-id="teamRadioWindow" gs-x="8" gs-y="9" gs-w="4" gs-h="4" gs-min-w="3" gs-min-h="2">
+      <div class="grid-stack-item-content">
+        <div class="widget-header tool-header">
+          <div class="mac-dots"><span class="red"></span><span class="yellow"></span><span class="green"></span></div>
+          <div class="widget-title-bar"><span class="name">Team Radio</span><span class="sub">Live captures</span></div>
+          <div class="widget-header-actions">
+            <button class="icon-btn tool-settings" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l-.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
+          </div>
+          <div class="tool-settings-pop"><label>Show timestamp <input type="checkbox" id="radioShowTimestamp" checked></label><label>Autoplay new messages <input type="checkbox" id="radioAutoplay"></label><label>Font size <input type="range" id="radioFont" min="50" max="150" step="10" value="90"></label><label>Focus driver <select id="radioDriver"><option value="">All drivers</option></select></label><label>Focus team <select id="radioTeam"><option value="">All teams</option></select></label></div>
+        </div>
+        <div class="widget-body"><section class="live-widget" id="teamRadioWidget"><h3>Team Radio</h3><div class="widget-empty">Waiting for radio…</div></section></div>
+      </div>
+    </div>
+
+    <!-- TYRE STRATEGY WIDGET -->
+    <div class="grid-stack-item" gs-id="tyreStrategyWindow" gs-x="0" gs-y="11" gs-w="4" gs-h="4" gs-min-w="3" gs-min-h="2">
+      <div class="grid-stack-item-content">
+        <div class="widget-header tool-header">
+          <div class="mac-dots"><span class="red"></span><span class="yellow"></span><span class="green"></span></div>
+          <div class="widget-title-bar"><span class="name">Tyre Strategy</span><span class="sub">Live stint history</span></div>
+          <div class="widget-header-actions">
+            <button class="icon-btn tool-settings" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l-.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
+          </div>
+          <div class="tool-settings-pop"><label>Selected driver <select id="tyreDriver"><option value="">All drivers</option></select></label><label>Ignore pitted laps <input type="checkbox" id="tyreIgnorePitted"></label><label>Font size <input type="range" id="tyreFont" min="50" max="150" step="10" value="90"></label></div>
+        </div>
+        <div class="widget-body"><section class="live-widget tyre-stints-widget" id="tyreStrategyWidget"><h3>Tyre Strategy</h3><div class="widget-empty">Waiting for stint data…</div></section></div>
+      </div>
+    </div>
+
+<!-- TRACK MAP WIDGET -->
+<div class="grid-stack-item" gs-id="trackMapWindow" gs-x="4" gs-y="12" gs-w="4" gs-h="4" gs-min-w="3" gs-min-h="2">
+  <div class="grid-stack-item-content">
+    <div class="widget-header tool-header">
+      <div class="mac-dots"><span class="red"></span><span class="yellow"></span><span class="green"></span></div>
+      <div class="widget-title-bar"><span class="name">Track Map</span><span class="sub">Live vector positions</span></div>
+    </div>
+    <div class="widget-body">
+      <section class="live-widget track-map-widget" id="trackMapWidget">
+        <div id="app">
+          <div class="status-badge">
+            <span class="dot off" id="dotMain"></span>
+            <span id="statusText">CONNECTING...</span>
+          </div>
+
+          <div id="trackView">
+            <canvas id="trackCanvas"></canvas>
+            <div class="track-hint" id="trackHint">Waiting for circuit map & telemetry...</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+const MAIN_WS = "wss://api.pitwall.me/ws";
+let state = {}, wsMain = null, backoffMain = 2000;
+let circuitKey = null, track = null, carAnim = {}, telemetry = {};
+let selectedDriver = null; 
+let carScreenPos = {};
+
+const DRIVER_ASSETS = {
+  NOR:{teamLogo:"https://images.prismic.io/formula-1-dashboard/Z7ZYlJ7c43Q3f_Pd_mclaren-normalized-logo.png"},
+  PIA:{teamLogo:"https://images.prismic.io/formula-1-dashboard/Z7ZYlJ7c43Q3f_Pd_mclaren-normalized-logo.png"},
+  RUS:{teamLogo:"https://images.prismic.io/formula-1-dashboard/Z7ZYkZ7c43Q3f_Pa_mercedes-normalized-logo.png"},
+  VER:{teamLogo:"https://images.prismic.io/formula-1-dashboard/aS9MoHNYClf9nuMb_rbr-normalized-logo.png"},
+  LEC:{teamLogo:"https://images.prismic.io/formula-1-dashboard/Z7ZYjp7c43Q3f_PX_ferrari-normalized-logo.png"},
+  HAM:{teamLogo:"https://images.prismic.io/formula-1-dashboard/Z7ZYjp7c43Q3f_PX_ferrari-normalized-logo.png"}
+};
+
+function deepMerge(base, patch){
+  if (typeof base !== 'object' || base === null || typeof patch !== 'object' || patch === null) return patch;
+  const r = Array.isArray(base) ? base.slice() : Object.assign({}, base);
+  for (const k in patch){ r[k] = (base[k] && typeof patch[k]==='object') ? deepMerge(base[k], patch[k]) : patch[k]; }
+  return r;
+}
+
+function setDot(id, mode){ 
+  const el = document.getElementById(id);
+  el.className = 'dot ' + (mode==='live'?'live':mode==='off'?'off':'');
+  document.getElementById('statusText').textContent = mode === 'live' ? 'LIVE TRACK MAP' : 'DISCONNECTED';
+}
+
+function setTelemetryStatus(mode){
+  const el = document.getElementById('telemetryConnStatus');
+  if (!el) return;
+  el.className = 'telemetry-status-pill ' + (mode === 'live' ? 'live' : 'off');
+  el.textContent = mode === 'live' ? 'LIVE' : 'DISCONNECTED';
+}
+
+function connectMain(){
+  setDot('dotMain','connecting');
+  setTelemetryStatus('off');
+  try{ wsMain = new WebSocket(MAIN_WS); wsMain.binaryType = 'arraybuffer'; }catch(e){ scheduleMain(); return; }
+  wsMain.onopen = () => { setDot('dotMain','live'); setTelemetryStatus('live'); backoffMain = 2000; };
+  wsMain.onmessage = (evt) => {
+    let raw;
+    try{
+      raw = (evt.data instanceof ArrayBuffer) ? new TextDecoder().decode(pako.inflate(new Uint8Array(evt.data))) : evt.data;
+      const obj = JSON.parse(raw);
+      if (obj && obj.type==='bundle' && Array.isArray(obj.messages)) obj.messages.forEach(processMainMsg);
+      else processMainMsg(obj);
+    }catch(e){}
+  };
+  wsMain.onclose = () => { setDot('dotMain','off'); setTelemetryStatus('off'); wsMain = null; scheduleMain(); };
+  wsMain.onerror = () => {};
+}
+function scheduleMain(){ setTimeout(connectMain, backoffMain); backoffMain = Math.min(backoffMain*1.6, 20000); }
+
+function processMainMsg(msg){
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.R && typeof msg.R === 'object'){ applyMainInitial(msg.R); return; }
+  if (Array.isArray(msg.M)){
+    msg.M.forEach(entry => {
+      if (entry && entry.H==='Streaming' && entry.M==='feed' && Array.isArray(entry.A) && entry.A.length>=2) applyMainFeed(entry.A[0], entry.A[1]);
+    });
+    return;
+  }
+  if (Array.isArray(msg) && msg.length>=2 && typeof msg[0]==='string') applyMainFeed(msg[0], msg[1]);
+}
+
+function applyMainInitial(initial){
+  for (const k in initial){
+    if (k.slice(-2)==='.z'){ routeCompressed(k, initial[k]); continue; }
+    state[k] = deepMerge(state[k] || {}, initial[k]);
+  }
+  if (initial.SessionInfo) trackSessionKey(initial.SessionInfo);
+}
+
+function applyMainFeed(key, value){
+  if (key.slice(-2)==='.z'){ routeCompressed(key, value); return; }
+  state[key] = deepMerge(state[key] || {}, value);
+  if (key==='SessionInfo') trackSessionKey(value);
+}
+
+function routeCompressed(key, blob){
+  if (key.indexOf('Position')===0) decodePositionBlob(blob);
+  if (key.indexOf('CarData')===0) decodeCarDataBlob(blob);
+}
+
+function trackSessionKey(info){
+  const key = info && info.Meeting && info.Meeting.Circuit && info.Meeting.Circuit.Key;
+  if (key && key !== circuitKey){ circuitKey = key; fetchCircuitMap(key); }
+}
+
+function inflateBlob(b64){
+  const bin = atob(b64), bytes = new Uint8Array(bin.length);
+  for (let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  return JSON.parse(new TextDecoder().decode(pako.inflateRaw(bytes)));
+}
+
+function decodeCarDataBlob(b64){
+  if (!b64 || typeof b64 !== 'string') return;
+  try{
+    const parsed = inflateBlob(b64);
+    const cars = parsed && (parsed.Cars || parsed.Entries || parsed.Data || parsed.data);
+    const latest = Array.isArray(cars) ? cars[cars.length - 1] : cars;
+    const set = latest && (latest.Cars || latest.Data || latest.data || latest);
+    if (!set || typeof set !== 'object') return;
+
+    const mapped = {};
+    for (const num in set){
+      const item = set[num];
+      const ch = item && (item.Channels || item.channels || item);
+      if (!ch || typeof ch !== 'object') continue;
+      mapped[num] = {
+        rpm: Number(ch[0] ?? ch.RPM ?? ch.rpm ?? 0),
+        speed: Number(ch[2] ?? ch.Speed ?? ch.speed ?? 0),
+        gear: ch[3] ?? ch.Gear ?? ch.gear ?? 'N',
+        throttle: Number(ch[4] ?? ch.Throttle ?? ch.throttle ?? 0),
+        brake: Number(ch[5] ?? ch.Brake ?? ch.brake ?? 0)
+      };
+    }
+    if (Object.keys(mapped).length) {
+      telemetry = mapped;
+      syncTelemetryWidget();
+    }
+  }catch(e){}
+}
+
+function decodePositionBlob(b64){
+  if (!b64 || typeof b64 !== 'string') return;
+  try{
+    const parsed = inflateBlob(b64);
+    const frames = parsed && parsed.Position;
+    if (!Array.isArray(frames) || !frames.length) return;
+    const latest = frames[frames.length-1];
+    if (!latest || !latest.Entries) return;
+    const now = performance.now();
+    for (const num in latest.Entries){
+      const e = latest.Entries[num];
+      if (typeof e.X !== 'number' || typeof e.Y !== 'number') continue;
+      const prev = carAnim[num];
+      if (!prev){ carAnim[num] = {sx:e.X, sy:e.Y, tx:e.X, ty:e.Y, st:now, dur:300}; continue; }
+      const t = Math.min(1, (now - prev.st) / prev.dur);
+      const cx = prev.sx + (prev.tx - prev.sx) * t, cy = prev.sy + (prev.ty - prev.sy) * t;
+      carAnim[num] = {sx:cx, sy:cy, tx:e.X, ty:e.Y, st:now, dur: prev._interval ? Math.min(1200, Math.max(180, prev._interval)) : 300, _interval: now - prev.st};
+    }
+  }catch(e){}
+}
+
+function syncTelemetryWidget(){
+  const el = document.getElementById('telemetryConnStatus');
+  const select = document.getElementById('telemetryDriverSelect');
+  const rpmEl = document.getElementById('telemetryRpmVal');
+  const speedEl = document.getElementById('telemetrySpeedVal');
+  const gearEl = document.getElementById('telemetryGearVal');
+  const throttleBar = document.getElementById('telemetryThrottleBar');
+  const throttleTxt = document.getElementById('telemetryThrottleTxt');
+  const brakeBar = document.getElementById('telemetryBrakeBar');
+  const brakeTxt = document.getElementById('telemetryBrakeTxt');
+  const leds = document.querySelectorAll('.telemetry-led');
+  if (!el || !select || !rpmEl || !speedEl || !gearEl || !throttleBar || !throttleTxt || !brakeBar || !brakeTxt) return;
+
+  const drivers = state.DriverList || {};
+  const driverList = Object.keys(drivers).sort((a, b) => Number(a) - Number(b));
+  if (!driverList.length) {
+    select.innerHTML = '<option value="">Waiting for drivers...</option>';
+    el.className = 'telemetry-status-pill off';
+    el.textContent = wsMain && wsMain.readyState === WebSocket.OPEN ? 'LIVE' : 'DISCONNECTED';
+    return;
+  }
+
+  const current = select.value || telemetrySelectedDriver || driverList[0];
+  telemetrySelectedDriver = current && drivers[current] ? current : driverList[0];
+  let html = '<option value="">Select Driver...</option>';
+  driverList.forEach((id) => {
+    html += '<option value="' + id + '"' + (id === telemetrySelectedDriver ? ' selected' : '') + '>' + (drivers[id].Tla || id) + '</option>';
+  });
+  select.innerHTML = html;
+  select.value = telemetrySelectedDriver;
+
+  const selected = telemetry[telemetrySelectedDriver] || {};
+  const rpm = Number(selected.rpm || 0);
+  const speed = Number(selected.speed || 0);
+  const gear = selected.gear === 0 || selected.gear === '0' ? 'N' : (selected.gear ?? 'N');
+  const throttle = Number(selected.throttle || 0);
+  const brake = Number(selected.brake || 0);
+
+  rpmEl.textContent = rpm.toLocaleString();
+  speedEl.textContent = speed;
+  gearEl.textContent = gear;
+  throttleBar.style.width = throttle + '%';
+  throttleTxt.textContent = throttle + '%';
+  brakeBar.style.width = brake + '%';
+  brakeTxt.textContent = brake + '%';
+
+  const litCount = Math.min(10, Math.max(0, Math.floor((rpm / 12000) * 10)));
+  leds.forEach((led, idx) => {
+    led.classList.toggle('lit', idx < litCount);
+  });
+
+  el.className = 'telemetry-status-pill ' + (wsMain && wsMain.readyState === WebSocket.OPEN ? 'live' : 'off');
+  el.textContent = wsMain && wsMain.readyState === WebSocket.OPEN ? 'LIVE' : 'DISCONNECTED';
+}
+
+async function fetchCircuitMap(key){
+  try{
+    const year = new Date().getFullYear();
+    const res = await fetch(`https://api.multiviewer.app/api/v1/circuits/${key}/${year}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!Array.isArray(data.x) || !data.x.length) return;
+    track = { x:data.x, y:data.y, corners:data.corners||[] };
+    document.getElementById('trackHint').textContent = 'Interactive track map loaded';
+  }catch(e){
+    document.getElementById('trackHint').textContent = 'Failed loading circuit map vector';
+  }
+}
+
+const cv = document.getElementById('trackCanvas'), ctx = cv.getContext('2d');
+function resizeCanvas(){
+  const wrap = document.getElementById('trackView');
+  cv.width = wrap.clientWidth * devicePixelRatio; cv.height = wrap.clientHeight * devicePixelRatio;
+  cv.style.width = wrap.clientWidth+'px'; cv.style.height = wrap.clientHeight+'px';
+}
+window.addEventListener('resize', resizeCanvas);
+
+function fitTrack(){
+  const xs = track.x, ys = track.y;
+  const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+  const w=maxX-minX||1, h=maxY-minY||1, pad=50*devicePixelRatio;
+  return {minX,minY,w,h, scale:Math.min((cv.width-pad*2)/w,(cv.height-pad*2)/h), cx:cv.width/2, cy:cv.height/2};
+}
+function project(x,y,f){ return { x: f.cx + (x-f.minX-f.w/2)*f.scale, y: f.cy - (y-f.minY-f.h/2)*f.scale }; }
+
+function drawTrack(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  if (!track){
+    ctx.fillStyle = '#84838c'; ctx.font = (13*devicePixelRatio)+'px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(circuitKey ? 'Loading circuit layout...' : 'Waiting for session circuit key...', cv.width/2, cv.height/2);
+    return;
+  }
+  const f = fitTrack();
+  
+  ctx.strokeStyle = '#27272a'; ctx.lineWidth = 12*devicePixelRatio; ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.beginPath();
+  track.x.forEach((x,i)=>{ const p=project(x, track.y[i], f); i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y); });
+  ctx.stroke();
+
+  ctx.strokeStyle = '#52525b'; ctx.lineWidth = 8*devicePixelRatio;
+  ctx.stroke();
+
+  (track.corners||[]).forEach(c=>{
+    const cx = c.trackPosition ? c.trackPosition.x : undefined, cy = c.trackPosition ? c.trackPosition.y : undefined;
+    if (cx===undefined) return;
+    const p = project(cx, cy, f);
+    ctx.fillStyle='#18181b'; ctx.beginPath(); ctx.arc(p.x,p.y,9*devicePixelRatio,0,7); ctx.fill();
+    ctx.strokeStyle='#3f3f46'; ctx.lineWidth = 1*devicePixelRatio; ctx.stroke();
+    ctx.fillStyle='#a1a1aa'; ctx.font=(8*devicePixelRatio)+'px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(c.number ?? '', p.x, p.y);
+  });
+
+  const now = performance.now();
+  const drivers = state.DriverList || {};
+  const R = 12*devicePixelRatio;
+  carScreenPos = {};
+
+  for (const num in carAnim){
+    const a = carAnim[num];
+    const t = Math.min(1, (now - a.st) / a.dur);
+    const x = a.sx + (a.tx - a.sx) * t, y = a.sy + (a.ty - a.sy) * t;
+    const drv = drivers[num] || {};
+    const p = project(x, y, f);
+    carScreenPos[num] = {x:p.x, y:p.y, r:R};
+    const color = drv.TeamColour ? '#'+drv.TeamColour.replace('#','') : '#eceae4';
+    const label = drv.Tla || num;
+    const isSelected = selectedDriver === num;
+
+    if (isSelected){
+      const pulse = 1 + 0.2 * Math.sin(now/200);
+      ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2.5*devicePixelRatio;
+      ctx.beginPath(); ctx.arc(p.x,p.y,(R+8*devicePixelRatio)*pulse,0,Math.PI*2); ctx.stroke();
+    }
+
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,R,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#18181b'; ctx.lineWidth=2*devicePixelRatio; ctx.stroke();
+
+    ctx.fillStyle='#ffffff'; ctx.font='bold '+(8*devicePixelRatio)+'px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(label.slice(0,3), p.x, p.y);
+  }
+}
+
+const telemetryDriverSelect = document.getElementById('telemetryDriverSelect');
+let telemetrySelectedDriver = null;
+if (telemetryDriverSelect) {
+  telemetryDriverSelect.addEventListener('change', function (e) {
+    telemetrySelectedDriver = e.target.value || null;
+    syncTelemetryWidget();
+  });
+}
+
+cv.addEventListener('click', (e)=>{
+  const rect = cv.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * devicePixelRatio, y = (e.clientY - rect.top) * devicePixelRatio;
+  let hit = null, hitDist = Infinity;
+  for (const num in carScreenPos){
+    const c = carScreenPos[num];
+    const d = Math.hypot(x - c.x, y - c.y);
+    if (d <= c.r * 2 && d < hitDist){ hit = num; hitDist = d; }
+  }
+  if (hit){ selectedDriver = (selectedDriver === hit) ? null : hit; }
+});
+
+function renderLoop(){
+  drawTrack();
+  requestAnimationFrame(renderLoop);
+}
+
+resizeCanvas();
+connectMain();
+requestAnimationFrame(renderLoop);
+</script>
+
+<style>
+  :root {
+    --bg: #0a0a0c; --panel: #141418; --line: #26262e;
+    --text: #eceae4; --muted: #84838c; --amber: #ff9a1f; --cyan: #4fd8e8;
+    --red: #ff4d4f; --green: #4ade80;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; overflow-x: hidden; }
+
+  #app { position: relative; width: 100%; height: 100%; overflow: hidden; }
+  
+  .status-badge {
+    position: absolute; top: 14px; left: 14px; z-index: 20;
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(20, 20, 24, 0.85); border: 1px solid var(--line);
+    padding: 6px 12px; border-radius: 999px; font-size: 11px; font-weight: 700;
+    backdrop-filter: blur(8px);
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+  .dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 1.6s infinite; }
+  .dot.off { background: var(--red); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+  #trackView { position: relative; width: 100%; height: 100%; }
+  #trackCanvas { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+  #trackCanvas:active { cursor: grabbing; }
+
+  .track-hint {
+    position: absolute; bottom: 16px; left: 16px; font-size: 11px; color: var(--muted);
+    background: rgba(20,20,24,0.85); padding: 8px 12px; border-radius: 8px;
+    border: 1px solid var(--line); backdrop-filter: blur(8px); pointer-events: none;
+  }
+</style>
+
+<!-- DRIVER CAR STATS (TELEMETRY) WIDGET -->
+<div class="grid-stack-item" gs-id="driverCarStatsWindow" gs-x="8" gs-y="13" gs-w="4" gs-h="4" gs-min-w="3" gs-min-h="2">
+  <div class="grid-stack-item-content">
+    <div class="widget-header tool-header">
+      <div class="mac-dots"><span class="red"></span><span class="yellow"></span><span class="green"></span></div>
+      <div class="widget-title-bar"><span class="name">Telemetry</span><span class="sub">Live steering wheel HUD</span></div>
+    </div>
+    <div class="widget-body">
+      <div class="telemetry-container">
+        <div class="telemetry-top-bar">
+          <select id="telemetryDriverSelect" class="telemetry-select"><option value="">Waiting for drivers...</option></select>
+          <div id="telemetryConnStatus" class="telemetry-status-pill off">DISCONNECTED</div>
+        </div>
+
+        <div class="telemetry-shift-lights" id="telemetryShiftLights">
+          <div class="telemetry-led green"></div><div class="telemetry-led green"></div><div class="telemetry-led green"></div>
+          <div class="telemetry-led red"></div><div class="telemetry-led red"></div><div class="telemetry-led red"></div><div class="telemetry-led red"></div>
+          <div class="telemetry-led blue"></div><div class="telemetry-led blue"></div><div class="telemetry-led blue"></div>
+        </div>
+
+        <div class="telemetry-dash-grid">
+          <div class="telemetry-metric">
+            <span class="label">RPM</span>
+            <span class="value" id="telemetryRpmVal">0</span>
+          </div>
+          <div class="telemetry-gear-box" id="telemetryGearVal">N</div>
+          <div class="telemetry-metric">
+            <span class="label">Speed</span>
+            <span class="value"><span id="telemetrySpeedVal">0</span> <small style="font-size:10px;color:var(--text-dim)">KPH</small></span>
+          </div>
+        </div>
+
+        <div class="telemetry-pedals">
+          <div class="telemetry-pedal-group">
+            <div class="telemetry-pedal-label"><span>THROTTLE</span><span id="telemetryThrottleTxt">0%</span></div>
+            <div class="telemetry-bar-track"><div class="telemetry-bar-fill throttle" id="telemetryThrottleBar"></div></div>
+          </div>
+          <div class="telemetry-pedal-group">
+            <div class="telemetry-pedal-label"><span>BRAKE</span><span id="telemetryBrakeTxt">0%</span></div>
+            <div class="telemetry-bar-track"><div class="telemetry-bar-fill brake" id="telemetryBrakeBar"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+  </div>
+
+  <div id="layoutControls">
+    <button class="icon-btn" id="layoutBtn" title="Layout" aria-label="Control Layout">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+        <rect x="14" y="3" width="7" height="4" rx="1.5"></rect>
+        <rect x="14" y="11" width="7" height="10" rx="1.5"></rect>
+        <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+      </svg>
+    </button>
+    <div class="layout-pop" id="layoutPop">
+      <div class="settings-title">Layout & Settings</div>
+      <select id="presetSelect" aria-label="Layout preset"></select>
+      <div class="layout-actions">
+        <button id="savePresetBtn" title="Save Preset">Save preset</button>
+        <button id="deletePresetBtn" title="Delete Preset">Delete</button>
+        <button id="tileWidgetsBtn" title="Tile Widgets">Compact grid</button>
+        <button id="resetLayoutBtn" title="Reset Layout">Reset</button>
+        <button id="exportLayoutBtn" title="Export Layout">Export</button>
+        <button id="importLayoutBtn" title="Import Layout">Import</button>
+      </div>
+      <label class="settings-row" style="margin-top: 8px;"><span>Show widgets</span><button id="showWidgetsBtn" style="width: auto; padding: 3px 8px;" title="Manage Widgets">Manage</button></label>
+      <div class="layout-status" id="layoutStatus">Layout saved locally</div>
+      <input type="file" id="layoutFileInput" accept="application/json" hidden />
+    </div>
+  </div>
+
+  <div id="widgetDock" aria-label="Minimized widgets"></div>
+
+<!-- GridStack JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gridstack.js/10.1.2/gridstack-all.js"></script>
+
+<script>
+(function () {
+  "use strict";
+
+  /* Initialize GridStack */
+  var grid = GridStack.init({
+    column: 12,
+    cellHeight: 80,
+    margin: 6,
+    animate: true,
+    float: false,
+    handle: '.widget-header',
+    resizable: { handles: 'e, se, s, sw, w' }
+  });
+
+  /* ======================================================================
+   * Live data connection — ported from timing.html.
+   * ==================================================================== */
+  var WS_URL = "wss://proxy.cloudflare-eggshell171.workers.dev";
+  var RECONNECT_DELAYS = [2000, 4000, 8000, 16000, 30000];
+
+  var state = {};
+  var ws = null;
+  var reconnectAttempt = 0;
+  var reconnectTimer = null;
+  var manuallyClosed = false;
+  var dirty = true;
+  var serverTimeOffset = 0;
+  var mapNeedsRedraw = true;
+
+  var connEl = {
+    liveChip: document.getElementById("liveChip"),
+    liveChipLabel: document.getElementById("liveChipLabel"),
+    reconnectBar: document.getElementById("reconnectBar"),
+    reconnectMsg: document.getElementById("reconnectMsg"),
+    retryBtn: document.getElementById("retryBtn"),
+    meetingName: document.getElementById("meetingName"),
+    sessionName: document.getElementById("sessionName"),
+    lapCountEl: document.getElementById("lapCountEl"),
+    clockEl: document.getElementById("clockEl")
+  };
+
+  function deepMerge(base, patch) {
+    if (typeof base !== "object" || base === null || typeof patch !== "object" || patch === null) return patch;
+    var result = Array.isArray(base) ? base.slice() : Object.assign({}, base);
+    var keys = Object.keys(patch);
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      if (base[k] && typeof patch[k] === "object") result[k] = deepMerge(base[k], patch[k]);
+      else result[k] = patch[k];
+    }
+    return result;
+  }
+
+  function setConnChip(mode) {
+    connEl.liveChip.className = "live-chip" + (mode === "live" ? "" : mode === "bad" ? " bad" : " connecting");
+    connEl.liveChipLabel.textContent = mode === "live" ? "LIVE" : mode === "bad" ? "OFFLINE" : "CONNECTING";
+  }
+
+  function connect() {
+    manuallyClosed = false;
+    setConnChip("connecting");
+    connEl.reconnectBar.classList.remove("show");
+    try {
+      ws = new WebSocket(WS_URL);
+    } catch (e) {
+      scheduleReconnect();
+      return;
+    }
+
+    ws.onopen = function () {
+      reconnectAttempt = 0;
+      setConnChip("live");
+      ws.send(JSON.stringify({ protocol: "json", version: 1 }) + "\u001e");
+      ws.send(JSON.stringify({
+        type: 1, target: "Subscribe",
+        arguments: [[
+          "Heartbeat", "SessionInfo", "SessionData", "TrackStatus", "DriverList", "TeamRadio",
+          "RaceControlMessages", "LapCount", "TimingData", "TimingStats",
+          "TimingAppData", "TyreStintSeries", "LapHistoryMap", "WeatherData", "ExtrapolatedClock",
+          "Position.z", "CarData.z"
+        ]],
+        invocationId: "1"
+      }) + "\u001e");
+    };
+
+    ws.onmessage = function (ev) {
+      var frames = String(ev.data).split("\u001e");
+      for (var i = 0; i < frames.length; i++) {
+        var frame = frames[i];
+        if (!frame) continue;
+        var msg;
+        try { msg = JSON.parse(frame); } catch (e) { continue; }
+        handleMessage(msg);
+      }
+      dirty = true;
+    };
+
+    ws.onclose = function () {
+      setConnChip("bad");
+      if (!manuallyClosed) scheduleReconnect();
+    };
+    ws.onerror = function () {
+      try { ws.close(); } catch (e) {}
+    };
+  }
+
+  function scheduleReconnect() {
+    if (reconnectTimer) return;
+    
+    // Infinite retry using max delay if we exceed standard steps
+    var delay = reconnectAttempt < RECONNECT_DELAYS.length 
+        ? RECONNECT_DELAYS[reconnectAttempt] 
+        : RECONNECT_DELAYS[RECONNECT_DELAYS.length - 1];
+
+    connEl.reconnectBar.classList.add("show");
+    connEl.reconnectMsg.textContent = "Connection lost. Reconnecting in " + Math.round(delay / 1000) + "s…";
+    reconnectAttempt++;
+    
+    reconnectTimer = setTimeout(function () {
+      reconnectTimer = null;
+      connect();
+    }, delay);
+  }
+
+  connEl.retryBtn.addEventListener("click", function () {
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    reconnectAttempt = 0;
+    connect();
+  });
+
+  function handleMessage(msg) {
+    if (msg.type === 3 && msg.result) {
+      var keys = Object.keys(msg.result);
+      for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        if (k.slice(-2) === ".z") continue;
+        state[k] = msg.result[k];
+        
+        // Sync server time delta for accurate extrapolated clocks
+        if (k === "ExtrapolatedClock" && msg.result[k].Utc) {
+            var clockStr = msg.result[k].Utc;
+            var serverTime = new Date(clockStr + (clockStr.endsWith("Z") ? "" : "Z")).getTime();
+            serverTimeOffset = Date.now() - serverTime;
+        }
+      }
+      return;
+    }
+    if (msg.type === 1 && msg.target === "feed" && msg.arguments) {
+      applyFeed(msg.arguments[0], msg.arguments[1]);
+      return;
+    }
+    if (msg.M && Array.isArray(msg.M)) {
+      for (var j = 0; j < msg.M.length; j++) {
+        var m = msg.M[j];
+        if (m && m.M === "feed" && m.A) applyFeed(m.A[0], m.A[1]);
+      }
+    }
+  }
+
+  function applyFeed(topic, payload) {
+    if (!topic) return;
+    if (topic.slice(-2) === ".z") {
+      if (topic.indexOf('CarData') === 0) decodeCarDataBlob(payload);
+      return;
+    }
+    state[topic] = deepMerge(state[topic] || {}, payload);
+    if (topic === 'DriverList') syncTelemetryWidget();
+    
+    // Sync server time delta on ExtrapolatedClock updates
+    if (topic === "ExtrapolatedClock" && payload.Utc) {
+        var clockStr = payload.Utc;
+        var serverTime = new Date(clockStr + (clockStr.endsWith("Z") ? "" : "Z")).getTime();
+        serverTimeOffset = Date.now() - serverTime;
+    }
+  }
+
+  function getRemainingMs(clock) {
+    if (!clock || !clock.Remaining) return null;
+    var parts = clock.Remaining.split(":");
+    var totalMs = parseInt(parts[0], 10) * 3600000 + parseInt(parts[1], 10) * 60000 + parseFloat(parts[2]) * 1000;
+    if (!clock.Extrapolating) return Math.max(0, totalMs);
+    var iso = clock.Utc && (clock.Utc.slice(-1) === "Z" ? clock.Utc : clock.Utc + "Z");
+    var utcMs = iso ? new Date(iso).getTime() : Date.now();
+    // Use serverTimeOffset to ensure accurate countdown regardless of local PC time drift
+    var elapsed = (Date.now() - serverTimeOffset) - utcMs;
+    return Math.max(0, totalMs - elapsed);
+  }
+
+  function msToClock(ms) {
+    if (ms === null || ms === undefined || isNaN(ms)) return "--:--:--";
+    var h = Math.floor(ms / 3600000);
+    var m = Math.floor((ms % 3600000) / 60000);
+    var s = Math.floor((ms % 60000) / 1000);
+    function p(n) { return (n < 10 ? "0" : "") + n; }
+    return p(h) + ":" + p(m) + ":" + p(s);
+  }
+
+  /* ======================================================================
+   * Settings UI & Rendering Logic
+   * ==================================================================== */
+  var settings = {
+    showNumber: true, showTire: true, showBest: true, showLast: true,
+    showGap: true, showInterval: true, showPitstopCount: true,
+    showBestSectors: true, showLastSectors: true, showMinisectors: true,
+    messageFontSize: 90
+  };
+
+  var selectedDriver = null; 
+  var toolSettings = {
+    battleAuto: true, battleThreshold: 1.5, battleSelect: "",
+    flyingAuto: true, flyingSelect: "", flyingFont: 90, pitDriver: "", pitFont: 90,
+    raceShowTimestamp: true, raceShowCategory: true, raceCategories: ["Flag", "Sector", "Other", "Overtake", "SafetyCar"], raceFont: 90,
+    radioShowTimestamp: true, radioAutoplay: false, radioDriver: "", radioTeam: "", radioFont: 90,
+    tyreDriver: "", tyreIgnorePitted: false, tyreFont: 90,
+    weatherFont: 90, weatherAirTemp: true, weatherTrackTemp: true, weatherHumidity: true,
+    weatherPressure: true, weatherWindSpeed: true, weatherWindDirection: true, weatherRainfall: true
+  };
+  var widgetsLocked = false;
+  var radioAudio = null;
+  var radioPlaying = null;
+  var currentRadioCaptures = [];
+  var lastRadioKey = "";
+  var f1pediaRadioWs = null;
+  var f1pediaRadioReconnectDelay = 2000;
+  var f1pediaRadioSnapshot = null;
+  var previousWeather = {};
+  var weatherFlash = {};
+
+  var DRIVER_ASSETS = {
+    NOR: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYlJ7c43Q3f_Pd_mclaren-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/mclaren/lannor01/2026mclarenlannor01numberwhitefrless.webp" },
+    PIA: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYlJ7c43Q3f_Pd_mclaren-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/mclaren/oscpia01/2026mclarenoscpia01numberwhitefrless.webp" },
+    RUS: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYkZ7c43Q3f_Pa_mercedes-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/mercedes/georus01/2026mercedesgeorus01numberwhitefrless.webp" },
+    ANT: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYkZ7c43Q3f_Pa_mercedes-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/mercedes/andant01/2026mercedesandant01numberwhitefrless.webp" },
+    VER: { teamLogo: "https://images.prismic.io/formula-1-dashboard/aS9MoHNYClf9nuMb_rbr-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/redbullracing/maxver01/2026redbullracingmaxver01numberwhitefrless.webp" },
+    HAD: { teamLogo: "https://images.prismic.io/formula-1-dashboard/aS9MoHNYClf9nuMb_rbr-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/redbullracing/isahad01/2026redbullracingisahad01numberwhitefrless.webp" },
+    LEC: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYjp7c43Q3f_PX_ferrari-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/ferrari/chalec01/2026ferrarichalec01numberwhitefrless.webp" },
+    HAM: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYjp7c43Q3f_PX_ferrari-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/ferrari/lewham01/2026ferrarilewham01numberwhitefrless.webp" },
+    SAI: { teamLogo: "https://images.prismic.io/formula-1-dashboard/aWqvnQIvOtkhBqzz_williams-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/williams/carsai01/2026williamscarsai01numberwhitefrless.webp" },
+    ALB: { teamLogo: "https://images.prismic.io/formula-1-dashboard/aWqvnQIvOtkhBqzz_williams-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/williams/alealb01/2026williamsalealb01numberwhitefrless.webp" },
+    LAW: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYj57c43Q3f_PY_rb-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/racingbulls/lialaw01/2026racingbullslialaw01numberwhitefrless.webp" },
+    LIN: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYj57c43Q3f_PY_rb-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/racingbulls/arvlin01/2026racingbullsarvlin01numberwhitefrless.webp" },
+    ALO: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYlp7c43Q3f_Pf_aston-martin-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/astonmartin/feralo01/2026astonmartinferalo01numberwhitefrless.webp" },
+    STR: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYlp7c43Q3f_Pf_aston-martin-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/astonmartin/lanstr01/2026astonmartinlanstr01numberwhitefrless.webp" },
+    OCO: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYkp7c43Q3f_Pb_haas-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/haasf1team/estoco01/2026haasf1teamestoco01numberwhitefrless.webp" },
+    BEA: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYkp7c43Q3f_Pb_haas-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/haasf1team/olibea01/2026haasf1teamolibea01numberwhitefrless.webp" },
+    GAS: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYkJ7c43Q3f_PZ_alpine-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/alpine/piegas01/2026alpinepiegas01numberwhitefrless.webp" },
+    COL: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYkJ7c43Q3f_PZ_alpine-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/alpine/fracol01/2026alpinefracol01numberwhitefrless.webp" },
+    HUL: { teamLogo: "https://images.prismic.io/formula-1-dashboard/aWqm4AIvOtkhBqx5_audi-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/audi/nichul01/2026audinichul01numberwhitefrless.webp" },
+    BOR: { teamLogo: "https://images.prismic.io/formula-1-dashboard/aWqm4AIvOtkhBqx5_audi-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/audi/gabbor01/2026audigabbor01numberwhitefrless.webp" },
+    PER: { teamLogo: "https://images.prismic.io/formula-1-dashboard/aWqongIvOtkhBqyj_cadillac-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/cadillac/serper01/2026cadillacserper01numberwhitefrless.webp" },
+    BOT: { teamLogo: "https://images.prismic.io/formula-1-dashboard/aWqongIvOtkhBqyj_cadillac-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/cadillac/valbot01/2026cadillacvalbot01numberwhitefrless.webp" }
+  };
+
+  var DRIVER_PORTRAITS = {
+    NOR: "https://images.prismic.io/formula-1-dashboard/Z9VKeziBA97Gig6v_2025-norris.avif",
+    PIA: "https://images.prismic.io/formula-1-dashboard/Z9VKfTiBA97Gig6x_2025-piastri.avif",
+    RUS: "https://images.prismic.io/formula-1-dashboard/Z9VKfjiBA97Gig6y_2025-russell.avif",
+    ANT: "https://images.prismic.io/formula-1-dashboard/Z9VKcTiBA97Gig6l_2025-antonelli.avif",
+    VER: "https://images.prismic.io/formula-1-dashboard/Z9VKgjiBA97Gig62_2025-verstappen.avif",
+    HAD: "https://images.prismic.io/formula-1-dashboard/aXCP7AIvOtkhBw6S_2026-hadjar.png",
+    LEC: "https://images.prismic.io/formula-1-dashboard/Z9VKejiBA97Gig6u_2025-leclerc.avif",
+    HAM: "https://images.prismic.io/formula-1-dashboard/Z9VKdziBA97Gig6r_2025-hamilton.avif",
+    SAI: "https://images.prismic.io/formula-1-dashboard/Z9VKfziBA97Gig6z_2025-sainz.avif",
+    ALB: "https://images.prismic.io/formula-1-dashboard/Z9VKbziBA97Gig6j_2025-albon.avif",
+    LAW: "https://images.prismic.io/formula-1-dashboard/Z_J86HdAxsiBwXP1_2025-lawson-RB.avif",
+    LIN: "https://images.prismic.io/formula-1-dashboard/aXCPIwIvOtkhBw55_2026-lindblad.png",
+    ALO: "https://images.prismic.io/formula-1-dashboard/Z9VKcDiBA97Gig6k_2025-alonso.avif",
+    STR: "https://images.prismic.io/formula-1-dashboard/Z9VKgDiBA97Gig60_2025-stroll.avif",
+    OCO: "https://images.prismic.io/formula-1-dashboard/Z9VKfDiBA97Gig6w_2025-ocon.avif",
+    BEA: "https://images.prismic.io/formula-1-dashboard/Z9VKcjiBA97Gig6m_2025-bearman.avif",
+    GAS: "https://images.prismic.io/formula-1-dashboard/Z9VKdTiBA97Gig6p_2025-gasly.avif",
+    COL: "https://images.prismic.io/formula-1-dashboard/aCOy_ydWJ-7kSCnB_2025-colapinto.avif",
+    HUL: "https://images.prismic.io/formula-1-dashboard/aXCOGwIvOtkhBw5S_2026-hulkenberg.png",
+    BOR: "https://images.prismic.io/formula-1-dashboard/aXCOGQIvOtkhBw5Q_2026-bortoleto.png",
+    PER: "https://images.prismic.io/formula-1-dashboard/aXCOHAIvOtkhBw5T_2026-perez.png",
+    BOT: "https://images.prismic.io/formula-1-dashboard/aXCOGgIvOtkhBw5R_2026-bottas.png"
+  };
+
+  var TEAM_COLOR_MAP = {
+    RUS: "#00D7B6",
+    ANT: "#00D7B6",
+    LEC: "#ED1131",
+    HAM: "#ED1131",
+    NOR: "#F47600",
+    PIA: "#F47600",
+    VER: "#4781D7",
+    HAD: "#4781D7",
+    ALO: "#229971",
+    STR: "#229971",
+    GAS: "#00A1E8",
+    COL: "#00A1E8",
+    ALB: "#1868DB",
+    SAI: "#1868DB",
+    LAW: "#6C98FF",
+    LIN: "#6C98FF",
+    OCO: "#9C9FA2",
+    BEA: "#9C9FA2",
+    HUL: "#F50537",
+    BOR: "#F50537",
+    BOT: "#909090",
+    PER: "#909090"
+  };
+
+  var sessionMode = "unknown"; 
+
+  function detectSessionMode() {
+    var info = state.SessionInfo;
+    if (!info) return "unknown";
+    var label = ((info.Type || "") + " " + (info.Name || "")).toLowerCase();
+    if (/qualifying|shootout/.test(label)) return "qualifying";
+    if (/practice/.test(label)) return "practice";
+    if (/race|sprint/.test(label)) return "race";
+    return "unknown";
+  }
+
+  function teamColor(hex, tla) {
+    var fallback = tla ? String(tla).trim().toUpperCase() : "";
+    var mapped = fallback && TEAM_COLOR_MAP[fallback] ? TEAM_COLOR_MAP[fallback] : "";
+    if (mapped) return mapped;
+
+    var requested = String(hex || "").trim();
+    if (requested) {
+      var cleaned = requested.replace(/^#/, "").replace(/\s+/g, "");
+      if (/^([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(cleaned)) return "#" + cleaned;
+      if (cleaned.length >= 6 && /^([0-9A-Fa-f]{8})$/.test(cleaned)) return "#" + cleaned.slice(0, 6);
+      if (cleaned.indexOf("0x") === 0) return "#" + cleaned.slice(2);
+    }
+    return "#e7e9ec";
+  }
+
+  function resolveDriverTeamColour(driverLike, fallbackTla) {
+    var d = driverLike || {};
+    var tla = String((d.Tla || d.tla || fallbackTla || "")).trim().toUpperCase();
+    var raw = d.TeamColour || d.teamColour || d.TeamColor || d.teamColor || d.Color || d.color || d.constructorColor || d.ConstructorColor || "";
+    var mapped = tla && TEAM_COLOR_MAP[tla] ? TEAM_COLOR_MAP[tla] : "";
+    return teamColor(raw || mapped, tla);
+  }
+  function tireAsset(compound) {
+    var name = String(compound || "").toLowerCase();
+    return /^(soft|medium|hard|intermediate|wet)$/.test(name) ? name : "unknown";
+  }
+  function segClass(status) {
+    switch (Number(status)) {
+      case 2048: return "minisector-set";
+      case 2049: return "minisector-pb";
+      case 2051: case 2052: return "minisector-ob";
+      case 2064: return "minisector-pit";
+      default: return "minisector-unknown";
+    }
+  }
+  function sectorClass(sec) {
+    if (!sec) return "";
+    return sec.OverallFastest ? "fastest" : (sec.PersonalFastest ? "personal" : "");
+  }
+  
+  function parseSeconds(str) {
+    if (!str || typeof str !== "string") return null;
+    var s = str.replace("+", "").trim();
+    // Safely handle lapped gaps so math functions don't break
+    if (s.toUpperCase().indexOf("LAP") > -1) return 99999; 
+    if (/^\d+:\d+\.\d+$/.test(s)) {
+      var p = s.split(":");
+      return parseInt(p[0], 10) * 60 + parseFloat(p[1]);
+    }
+    if (/^\d+(\.\d+)?$/.test(s)) return parseFloat(s);
+    return null;
+  }
+
+  function lapTimeClass(time, driverBestMs, sessionBestMs) {
+    var valueMs = parseSeconds(time && time.Value);
+    if (valueMs === null || valueMs === 99999) return "lap-no-reference";
+    var epsilon = 0.0005;
+    if (time.OverallFastest || (sessionBestMs !== null && Math.abs(valueMs - sessionBestMs) <= epsilon)) return "lap-overall-best";
+    if (time.PersonalFastest || (driverBestMs !== null && Math.abs(valueMs - driverBestMs) <= epsilon)) return "lap-personal-best";
+    if (driverBestMs !== null && valueMs > driverBestMs + epsilon) return "lap-slower";
+    return "lap-no-reference";
+  }
+
+  function orderedDrivers() {
+    var td = state.TimingData, dl = state.DriverList;
+    if (!td || !td.Lines || !dl) return [];
+    var nums = Object.keys(td.Lines).filter(function (n) { return dl[n]; });
+    nums.sort(function (a, b) {
+      var pa = parseInt(td.Lines[a].Position, 10); if (isNaN(pa)) pa = 999;
+      var pb = parseInt(td.Lines[b].Position, 10); if (isNaN(pb)) pb = 999;
+      return pa - pb;
+    });
+    return nums;
+  }
+
+  function columns() {
+    var isQuali = sessionMode === "qualifying";
+    var cols = [{ key: "pos", label: "Pos" }];
+    if (settings.showNumber) cols.push({ key: "num", label: "#" });
+    cols.push({ key: "driver", label: "Driver" });
+    if (settings.showTire) cols.push({ key: "tire", label: "Tyre", compact: true });
+    if (isQuali) {
+      cols.push({ key: "time", label: "Time", compact: true });
+    } else {
+      if (settings.showBest) cols.push({ key: "best", label: "Best Lap", compact: true });
+      if (settings.showLast) cols.push({ key: "last", label: "Last Lap", compact: true });
+    }
+    cols.push({ key: "s1", label: "S1", compact: true });
+    cols.push({ key: "s2", label: "S2", compact: true });
+    cols.push({ key: "s3", label: "S3", compact: true });
+    if (settings.showGap) cols.push({ key: "gap", label: "Gap", compact: true });
+    if (settings.showInterval) cols.push({ key: "interval", label: "Interval", compact: true });
+    if (settings.showPitstopCount) cols.push({ key: "pits", label: isQuali ? "In Pits" : "Pits", compact: true });
+    return cols;
+  }
+
+  function renderHead() {
+    var cols = columns();
+    document.getElementById("tableHead").innerHTML =
+      "<tr>" + cols.map(function (c) { return '<th class="' + (c.compact ? "compact-header" : "") + '">' + c.label + "</th>"; }).join("") + "</tr>";
+  }
+
+  function sectorCellHtml(sec, bestSec) {
+    var html = '<div class="time-cell-content">';
+    if (settings.showLastSectors) {
+      html += '<div class="time-row"><span class="time-value ' + sectorClass(sec) + '">' +
+        (sec && sec.Value || "-") + "</span></div>";
+    }
+    if (settings.showBestSectors) {
+      html += '<div class="time-row"><span class="time-value ' + sectorClass(bestSec) + '">' +
+        (bestSec && bestSec.Value || "-") + "</span></div>";
+    }
+    if (settings.showMinisectors && sec && sec.Segments && sec.Segments.length) {
+      html += '<div class="minisector-row"><div class="minisector-container">';
+      sec.Segments.forEach(function (seg) {
+        html += '<span class="minisector ' + segClass(seg && seg.Status) + '"></span>';
+      });
+      html += "</div></div>";
+    }
+    html += "</div>";
+    return html;
+  }
+
+  var practiceGapCache = { gap: {}, interval: {} };
+  function computePracticeGaps(nums) {
+    var td = state.TimingData;
+    var ranked = nums
+      .map(function (n) { return { num: n, ms: parseSeconds(td.Lines[n].BestLapTime && td.Lines[n].BestLapTime.Value) }; })
+      .filter(function (d) { return d.ms !== null && d.ms !== 99999; })
+      .sort(function (a, b) { return a.ms - b.ms; });
+
+    var gap = {}, interval = {};
+    nums.forEach(function (n) { gap[n] = "-"; interval[n] = "-"; });
+    ranked.forEach(function (d, i) {
+      gap[d.num] = i === 0 ? "-" : "+" + (d.ms - ranked[0].ms).toFixed(3);
+      interval[d.num] = i === 0 ? "-" : "+" + (d.ms - ranked[i - 1].ms).toFixed(3);
+    });
+    practiceGapCache = { gap: gap, interval: interval };
+  }
+
+  function displayGap(num, line) {
+    if (sessionMode === "practice") return practiceGapCache.gap[num] || "-";
+    return line.GapToLeader || (line.Position === "1" ? "LEADER" : "-");
+  }
+
+  function displayInterval(num, line) {
+    if (sessionMode === "practice") {
+      var raw = practiceGapCache.interval[num] || "-";
+      if (!selectedDriver) return raw;
+      var td0 = state.TimingData;
+      var refBest = parseSeconds(td0.Lines[selectedDriver] && td0.Lines[selectedDriver].BestLapTime && td0.Lines[selectedDriver].BestLapTime.Value);
+      var thisBest = parseSeconds(line.BestLapTime && line.BestLapTime.Value);
+      if (selectedDriver === num) return "-";
+      if (refBest === null || thisBest === null || refBest === 99999 || thisBest === 99999) return raw;
+      var d = thisBest - refBest;
+      return (d >= 0 ? "+" : "") + d.toFixed(3);
+    }
+    var raw = (line.IntervalToPositionAhead && line.IntervalToPositionAhead.Value) || "-";
+    if (!selectedDriver || selectedDriver === num) return selectedDriver === num ? "-" : raw;
+    var td = state.TimingData;
+    var refLine = td.Lines[selectedDriver];
+    if (!refLine) return raw;
+    var refGap = parseSeconds(refLine.GapToLeader);
+    var thisGap = parseSeconds(line.GapToLeader);
+    if (refGap === null || thisGap === null || refGap === 99999 || thisGap === 99999) return raw;
+    var delta = thisGap - refGap;
+    return (delta >= 0 ? "+" : "") + delta.toFixed(3);
+  }
+
+  function fastestOverallDriver(nums) {
+    var td = state.TimingData;
+    var best = null, num = null;
+    nums.forEach(function (n) {
+      var ms = parseSeconds(td.Lines[n].BestLapTime && td.Lines[n].BestLapTime.Value);
+      if (ms !== null && ms !== 99999 && (best === null || ms < best)) { best = ms; num = n; }
+    });
+    return num;
+  }
+
+  function fastestSessionLapMs(nums) {
+    var td = state.TimingData;
+    var best = null;
+    nums.forEach(function (n) {
+      var value = parseSeconds(td.Lines[n].BestLapTime && td.Lines[n].BestLapTime.Value);
+      if (value !== null && value !== 99999 && (best === null || value < best)) best = value;
+    });
+    return best;
+  }
+
+  function renderBody() {
+    var nums = orderedDrivers();
+    var cols = columns();
+    var body = document.getElementById("tableBody");
+
+    if (!nums.length) {
+      body.innerHTML = '<tr class="empty-state"><td colspan="' + cols.length + '">Waiting for timing data…</td></tr>';
+      return;
+    }
+
+    var td = state.TimingData, dl = state.DriverList, tad = state.TimingAppData, tstats = state.TimingStats;
+
+    if (sessionMode === "practice") computePracticeGaps(nums);
+    var sessionBestMs = fastestSessionLapMs(nums);
+
+    var qualiHasFlags = sessionMode === "qualifying" && nums.some(function (n) {
+      return td.Lines[n].Cutoff !== undefined || td.Lines[n].KnockedOut !== undefined;
+    });
+
+    body.innerHTML = nums.map(function (num) {
+      var line = td.Lines[num] || {};
+      var driver = dl[num] || {};
+      var assets = DRIVER_ASSETS[driver.Tla] || {};
+      var color = teamColor(driver.TeamColour, driver.Tla);
+      var stints = (tad && tad.Lines && tad.Lines[num] && tad.Lines[num].Stints) || [];
+      var lastStint = stints.length ? stints[stints.length - 1] : null;
+      var compound = lastStint ? lastStint.Compound : null;
+      var tireAge = lastStint ? (lastStint.TotalLaps !== undefined ? lastStint.TotalLaps : lastStint.StartLaps) : null;
+      var last = line.LastLapTime || {};
+      var best = line.BestLapTime || {};
+      var driverBestMs = parseSeconds(best.Value);
+      var sectors = line.Sectors || [];
+
+      var rowClasses = [];
+      var atRisk = line.Cutoff;
+      var knockedOut = line.KnockedOut;
+      if (sessionMode === "qualifying" && !qualiHasFlags) {
+        var pos = parseInt(line.Position, 10);
+        if (!isNaN(pos)) atRisk = pos > nums.length - 5;
+      }
+      if (atRisk) rowClasses.push("at-risk-elimination");
+      if (num === selectedDriver) rowClasses.push("selected-driver");
+      if (line.Stopped || line.Retired || knockedOut) rowClasses.push("disabled-driver");
+      if (line.InPit) rowClasses.push("inpit-row");
+
+      var cells = cols.map(function (c) {
+        switch (c.key) {
+          case "pos":
+            return "<td>" + (knockedOut
+              ? '<span class="knocked-out-pos">OUT</span>'
+              : '<span class="driver-pos">' + (line.Position || "-") + "</span>") + "</td>";
+          case "num":
+            return '<td class="driver-num">' + (assets.numberLogo
+              ? '<img class="driver-number-logo" src="' + assets.numberLogo + '" alt="Number ' + num + '" onload="this.nextElementSibling.style.display=\'none\';" onerror="this.style.display=\'none\';" />'
+              : '') + '<span class="driver-number-fallback">' + num + '</span></td>';
+          case "driver":
+            return '<td><div class="driver-cell"><span class="team-swatch" style="background:' + color + '"></span>' +
+              (assets.teamLogo ? '<img class="team-logo" src="' + assets.teamLogo + '" alt="' + (driver.TeamName || driver.Team || 'Team') + ' logo" onerror="this.style.display=\'none\'" />' : '') +
+              '<span class="driver-tla" style="color:' + color + '">' + (driver.Tla || "—") + "</span></div></td>";
+          case "tire":
+            return '<td class="compact-header">' + (compound
+              ? '<img class="tire-badge" src="images/tires/' + tireAsset(compound) + '.svg" alt="' + compound + ' tyre" onerror="this.style.display=\'none\'" />' +
+                (tireAge !== null && tireAge !== undefined ? '<span class="tyre-age"> (' + tireAge + ")</span>" : "")
+              : '<img class="tire-badge" src="images/tires/unknown.svg" alt="Unknown tyre" onerror="this.style.display=\'none\'" />') + "</td>";
+          case "best":
+            return '<td class="compact-header ' + lapTimeClass(best, driverBestMs, sessionBestMs) + '">' + (best.Value || "-") + "</td>";
+          case "last":
+            return '<td class="compact-header ' + lapTimeClass(last, driverBestMs, sessionBestMs) + '">' + (last.Value || "-") + "</td>";
+          case "time":
+            var qualifyingTime = best.Value ? best : last;
+            return '<td class="compact-header ' + lapTimeClass(qualifyingTime, driverBestMs, sessionBestMs) + '">' + (qualifyingTime.Value || "-") + "</td>";
+          case "s1": case "s2": case "s3": {
+            var idx = c.key === "s1" ? 0 : c.key === "s2" ? 1 : 2;
+            var bestSectors = tstats && tstats.Lines && tstats.Lines[num] && tstats.Lines[num].BestSectorTimes;
+            return '<td class="compact-header">' + sectorCellHtml(sectors[idx], bestSectors && bestSectors[idx]) + "</td>";
+          }
+          case "gap":
+            return '<td class="compact-header">' + displayGap(num, line) + "</td>";
+          case "interval":
+            return '<td class="compact-header">' + displayInterval(num, line) + "</td>";
+          case "pits":
+            return '<td class="compact-header">' + (line.InPit ? "In Pits" : (line.NumberOfPitStops !== undefined && line.NumberOfPitStops !== null ? line.NumberOfPitStops : "—")) + "</td>";
+        }
+        return "<td></td>";
+      }).join("");
+
+      return '<tr class="' + rowClasses.join(" ") + '" data-num="' + num + '" style="border-left:3px solid ' + color + '">' + cells + "</tr>";
+    }).join("");
+  }
+
+  // Event delegation setup to prevent memory leaks in table rows
+  document.getElementById("tableBody").addEventListener("click", function(e) {
+    var tr = e.target.closest("tr[data-num]");
+    if (!tr) return;
+    var num = tr.getAttribute("data-num");
+    var td = state.TimingData;
+    var line = td.Lines[num];
+    if (!line || line.Stopped || line.Retired || line.KnockedOut) return;
+    selectedDriver = selectedDriver === num ? null : num;
+    renderBody();
+    document.getElementById("footerHint").textContent = selectedDriver
+      ? "Comparing gaps to #" + selectedDriver
+      : "Click row to compare gaps";
+  });
+
+  function htmlSafe(value) {
+    return String(value === undefined || value === null ? "" : value).replace(/[&<>"']/g, function (ch) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+    });
+  }
+
+  function driverIdentityHtml(driver, number, options) {
+    driver = driver || {};
+    options = options || {};
+    var code = driver.Tla || driver.Code || driver.code || number || "-";
+    var assets = DRIVER_ASSETS[code] || {};
+    var label = driver.FullName || driver.Name || driver.name || driver.TeamName || driver.Team || code;
+    var visual = '<span class="driver-visual">' +
+      (assets.teamLogo ? '<img class="driver-team-logo" src="' + assets.teamLogo + '" alt="' + htmlSafe(label) + ' team logo" onerror="this.style.display=\'none\'" />' : '') +
+      (assets.numberLogo ? '<img class="driver-number-logo" src="' + assets.numberLogo + '" alt="Car number ' + htmlSafe(number || code) + '" onerror="this.style.display=\'none\'" />' : '<span class="driver-number-fallback">#' + htmlSafe(number || "-") + '</span>') +
+      '</span>';
+    return '<span class="driver-identity">' + visual + (options.hideName ? '' : '<span class="driver-tla" style="color:' + htmlSafe(teamColor(driver.TeamColour, code)) + '">' + htmlSafe(code) + '</span>') + '</span>';
+  }
+
+  function battleDriverIdentityHtml(driver, number) {
+    driver = driver || {};
+    var code = driver.Tla || driver.Code || driver.code || number || "-";
+    var portrait = DRIVER_PORTRAITS[code];
+    var label = driver.FullName || driver.Name || driver.name || code;
+    return '<span class="battle-driver-identity">' +
+      (portrait ? '<img class="battle-driver-portrait" src="' + portrait + '" alt="' + htmlSafe(label) + ' portrait" onerror="this.style.display=\'none\'" />' : '') +
+      '<span class="driver-tla" style="color:' + htmlSafe(teamColor(driver.TeamColour, code)) + '">' + htmlSafe(code) + '</span></span>';
+  }
+
+  function feedList(value, key) {
+    var list = value && key ? value[key] : value;
+    if (!list) return [];
+    if (Array.isArray(list)) return list;
+    // Properly convert dictionary to array without mutating source
+    return Object.keys(list).map(function (k) { return list[k]; });
+  }
+
+  function liveDriverRows() {
+    var td = state.TimingData, dl = state.DriverList;
+    if (!td || !td.Lines || !dl) return [];
+    return Object.keys(td.Lines).filter(function (num) { return dl[num]; }).map(function (num) {
+      return { num: num, line: td.Lines[num] || {}, driver: dl[num] || {} };
+    }).filter(function (row) { return !row.line.Retired && !row.line.Stopped && row.line.Position; })
+      .sort(function (a, b) { return parseInt(a.line.Position, 10) - parseInt(b.line.Position, 10); });
+  }
+
+  function renderBattleWidget() {
+    var el = document.getElementById("battleWidget"), rows = liveDriverRows(), battle = null, battles = [];
+    var sessionBestMs = fastestSessionLapMs(rows.map(function (row) { return row.num; }));
+    for (var i = 1; i < rows.length; i++) {
+      var ahead = rows[i - 1], behind = rows[i];
+      var gap = parseSeconds(behind.line.GapToLeader), aheadGap = parseSeconds(ahead.line.GapToLeader);
+      if (gap !== null && aheadGap !== null && gap - aheadGap <= toolSettings.battleThreshold) battles.push({ ahead: ahead, behind: behind, gap: gap - aheadGap });
+    }
+    battle = toolSettings.battleAuto ? battles[0] : battles.find(function (item) { return item.ahead.num + ":" + item.behind.num === toolSettings.battleSelect; });
+    var select = document.getElementById("battleSelect");
+    if (select) {
+      select.innerHTML = '<option value="">Auto</option>' + battles.map(function (item) { return '<option value="' + item.ahead.num + ':' + item.behind.num + '">' + htmlSafe(item.ahead.driver.Tla || item.ahead.num) + ' vs ' + htmlSafe(item.behind.driver.Tla || item.behind.num) + '</option>'; }).join("");
+      select.value = toolSettings.battleSelect;
+    }
+    if (!battle) {
+      el.innerHTML = '<h3>Battle</h3><div class="widget-empty">No close battles on track</div>';
+      return;
+    }
+    var aheadLap = battle.ahead.line.LastLapTime || {};
+    var behindLap = battle.behind.line.LastLapTime || {};
+    var aheadLapMs = parseSeconds(aheadLap.Value);
+    var behindLapMs = parseSeconds(behindLap.Value);
+    var diff = aheadLapMs !== null && behindLapMs !== null && aheadLapMs !== 99999 && behindLapMs !== 99999 ? behindLapMs - aheadLapMs : null;
+    var aheadBestMs = parseSeconds(battle.ahead.line.BestLapTime && battle.ahead.line.BestLapTime.Value);
+    var behindBestMs = parseSeconds(battle.behind.line.BestLapTime && battle.behind.line.BestLapTime.Value);
+    el.innerHTML = '<h3>Battle · P' + htmlSafe(battle.ahead.line.Position) + '</h3>' +
+      '<table class="battle-table"><tr><td class="metric">Ahead</td><td>' + battleDriverIdentityHtml(battle.ahead.driver, battle.ahead.num) + '</td><td class="battle-gap">' + battle.gap.toFixed(3) + 's</td><td>' + battleDriverIdentityHtml(battle.behind.driver, battle.behind.num) + '</td></tr>' +
+      '<tr><td class="metric">Last lap</td><td class="' + lapTimeClass(aheadLap, aheadBestMs, sessionBestMs) + '">' + htmlSafe(aheadLap.Value || "-") + '</td><td class="metric">delta</td><td class="' + (diff !== null && diff <= 0 ? "battle-diff-positive" : "battle-diff-negative") + '">' + (diff === null ? "-" : (diff >= 0 ? "+" : "") + diff.toFixed(3)) + '</td></tr>' +
+      '<tr><td class="metric">Behind lap</td><td class="' + lapTimeClass(behindLap, behindBestMs, sessionBestMs) + '">' + htmlSafe(behindLap.Value || "-") + '</td><td></td><td></td></tr></table>';
+  }
+
+  function renderFlyingLapWidget() {
+    var el = document.getElementById("flyingLapWidget"), rows = liveDriverRows(), candidate = null, bestCount = -1;
+    rows.forEach(function (row) {
+      var sectors = row.line.Sectors || [], count = sectors.reduce(function (total, sec) {
+        var segments = sec && sec.Segments || [];
+        return total + (segments.some(function (seg) { return [2048, 2049, 2051, 2052].indexOf(Number(seg.Status)) >= 0; }) ? 1 : 0);
+      }, 0);
+      if (toolSettings.flyingAuto && count > bestCount && count > 0) { bestCount = count; candidate = row; }
+      if (!toolSettings.flyingAuto && row.num === toolSettings.flyingSelect) candidate = row;
+    });
+    var flyingSelect = document.getElementById("flyingSelect");
+    if (flyingSelect) {
+      flyingSelect.innerHTML = '<option value="">Auto</option>' + rows.map(function (row) { return '<option value="' + row.num + '">' + htmlSafe(row.driver.Tla || row.num) + '</option>'; }).join("");
+      flyingSelect.value = toolSettings.flyingSelect;
+    }
+    if (!candidate) {
+      el.innerHTML = '<h3>Flying Lap</h3><div class="widget-empty">Waiting for sector data…</div>';
+      return;
+    }
+    var sectors = candidate.line.Sectors || [];
+    el.style.fontSize = toolSettings.flyingFont + "%";
+    var sessionBestMs = fastestSessionLapMs(rows.map(function (row) { return row.num; }));
+    var candidateBestMs = parseSeconds(candidate.line.BestLapTime && candidate.line.BestLapTime.Value);
+    var candidateLap = candidate.line.LastLapTime || {};
+    el.innerHTML = '<h3>Flying Lap</h3><div class="flying-driver"><strong>' + htmlSafe(candidate.driver.Tla || candidate.num) + '</strong><span class="flying-time ' + lapTimeClass(candidateLap, candidateBestMs, sessionBestMs) + '">' + htmlSafe(candidateLap.Value || "--:--.---") + '</span></div><div class="sector-strip">' + [0, 1, 2].map(function (idx) {
+      var sec = sectors[idx] || {};
+      return '<div class="sector-box"><span>S' + (idx + 1) + '</span><strong>' + htmlSafe(sec.Value || "-") + '</strong></div>';
+    }).join("") + '</div>';
+  }
+
+  function renderPitStrategyWidget() {
+    var el = document.getElementById("pitStrategyWidget"), rows = liveDriverRows();
+    var select = document.getElementById("pitDriver"), selected = toolSettings.pitDriver;
+    if (select) {
+      select.innerHTML = '<option value="">Leader</option>' + rows.map(function (row) {
+        return '<option value="' + htmlSafe(row.num) + '">' + htmlSafe(row.driver.Tla || row.num) + '</option>';
+      }).join("");
+      select.value = selected;
+    }
+    el.style.fontSize = toolSettings.pitFont + "%";
+    if (sessionMode !== "race" || !rows.length) {
+      el.innerHTML = '<h3>Pit Strategy</h3><div class="widget-empty">Race strategy unavailable</div>';
+      return;
+    }
+    var driver = selected ? rows.find(function (row) { return row.num === selected; }) : rows[0];
+    if (!driver) {
+      el.innerHTML = '<h3>Pit Strategy</h3><div class="widget-empty">Selected driver is not currently classified</div>';
+      return;
+    }
+    var gap = parseSeconds(driver.line.GapToLeader);
+    var pitDelta = 21;
+    var projected = (gap === null || gap === 99999) ? "-" : (gap + pitDelta).toFixed(1) + "s";
+    el.innerHTML = '<h3>Pit Strategy</h3><table class="pit-table"><tr><td class="metric">Reference</td><td>' + driverIdentityHtml(driver.driver, driver.num) + '</td></tr><tr><td class="metric">Pit loss</td><td>~' + pitDelta + 's</td></tr><tr><td class="metric">Projected gap</td><td class="battle-gap">' + projected + '</td></tr><tr><td class="metric">Tyre</td><td>' + htmlSafe(((state.TimingAppData && state.TimingAppData.Lines && state.TimingAppData.Lines[driver.num] && state.TimingAppData.Lines[driver.num].Stints || []).slice(-1)[0] || {}).Compound || "Unknown") + '</td></tr></table>';
+  }
+
+  function renderRaceControlWidget() {
+    var el = document.getElementById("raceControlWidget");
+    var messages = feedList(state.RaceControlMessages, "Messages").filter(function (msg) {
+      return !msg.Category || toolSettings.raceCategories.indexOf(raceControlCategory(msg)) >= 0;
+    }).slice(-50); // Bound array size to prevent UI freeze over time
+
+    messages = messages.slice().sort(function (a, b) {
+      var aUtc = a && a.Utc ? new Date(a.Utc).getTime() : 0;
+      var bUtc = b && b.Utc ? new Date(b.Utc).getTime() : 0;
+      return aUtc - bUtc;
+    }).reverse();
+
+    el.style.fontSize = toolSettings.raceFont + "%";
+    el.innerHTML = '<h3>Race Control</h3>' + (messages.length ? '<div class="race-list">' + messages.map(function (msg) {
+      var category = raceControlCategory(msg), flag = raceFlagAsset(msg);
+      return '<div class="race-item"><div class="race-meta">' + (flag ? '<img class="race-flag" src="' + flag + '" alt="' + htmlSafe(category) + ' flag" onerror="this.style.display=\'none\';" />' : '') + (toolSettings.raceShowTimestamp ? htmlSafe((msg.Utc || "").slice(11, 19)) : "") + (toolSettings.raceShowTimestamp && toolSettings.raceShowCategory ? ' · ' : '') + (toolSettings.raceShowCategory ? htmlSafe(category) : "") + '</div>' + htmlSafe(msg.Message || "") + '</div>';
+    }).join("") + '</div>' : '<div class="widget-empty">Waiting for messages…</div>');
+  }
+
+  function raceControlCategory(message) {
+    var category = String(message && message.Category || "Other");
+    return /^(drs|overtake)$/i.test(category) ? "Overtake" : category;
+  }
+
+  function raceFlagAsset(message) {
+    var text = String(message && (message.Message || message.Text) || "").toLowerCase();
+    if (!text) return "";
+    if (/chequered|checkered/.test(text)) return "images/flags/chequered-flag.svg";
+    if (/black.?and.?white|black white/.test(text)) return "images/flags/black-and-white-flag.svg";
+    if (/double yellow/.test(text)) return "images/flags/double-yellow-flag.svg";
+    if (/blue flag|blue flags/.test(text)) return "images/flags/blue-flag.svg";
+    if (/red flag|red flags/.test(text)) return "images/flags/red-flag.svg";
+    if (/green flag|track clear|all clear/.test(text)) return "images/flags/green-flag.svg";
+    if (/yellow flag|yellow flags|slow zone/.test(text)) return "images/flags/yellow-flag.svg";
+    return "";
+  }
+
+  function teamRadioTranscriptMarkup(capture) {
+    var transcript = "";
+    if (capture && typeof capture === "object") {
+      transcript = capture.Transcription || capture.TranscriptionEs || capture.Message || capture.Text || "";
+    }
+
+    transcript = String(transcript || "").trim();
+    if (!transcript) return '<span class="widget-empty">No transcript</span>';
+
+    var lines = transcript.split(/\r?\n+/).map(function (line) {
+      return String(line || "").trim();
+    }).filter(Boolean).slice(0, 4);
+
+    if (!lines.length) return '<span class="widget-empty">No transcript</span>';
+
+    return '<div class="radio-message-block"><div class="radio-transcript-list">' + lines.map(function (line) {
+      return '<div class="radio-transcript-line"><small>TXT</small>' + htmlSafe(line) + '</div>';
+    }).join("") + '</div></div>';
+  }
+
+  function normalizeF1PediaTranscript(transcript) {
+    var segments = Array.isArray(transcript) ? transcript : [];
+    var text = [];
+    segments.forEach(function (segment) {
+      if (!segment || typeof segment !== "object") return;
+      var line = segment.en || segment.es || segment.text || segment.transcript || "";
+      if (String(line || "").trim()) text.push(String(line).trim());
+    });
+    return text;
+  }
+
+  function connectF1PediaRadio() {
+    try {
+      f1pediaRadioWs = new WebSocket("wss://f1.f1pedia.com/api/v1/live/ws");
+    } catch (err) {
+      reconnectF1PediaRadio();
+      return;
+    }
+
+    f1pediaRadioWs.onopen = function () {
+      f1pediaRadioReconnectDelay = 2000;
+    };
+
+    f1pediaRadioWs.onmessage = function (event) {
+      var message;
+      try {
+        message = typeof event.data === "string" ? JSON.parse(event.data) : JSON.parse(new TextDecoder().decode(event.data));
+      } catch (err) {
+        return;
+      }
+      if (message && message.snapshot) {
+        f1pediaRadioSnapshot = message.snapshot;
+        renderTeamRadioWidget();
+      }
+    };
+
+    f1pediaRadioWs.onclose = function () {
+      f1pediaRadioWs = null;
+      reconnectF1PediaRadio();
+    };
+
+    f1pediaRadioWs.onerror = function () {};
+  }
+
+  function reconnectF1PediaRadio() {
+    setTimeout(function () {
+      connectF1PediaRadio();
+      f1pediaRadioReconnectDelay = Math.min(f1pediaRadioReconnectDelay * 1.6, 20000);
+    }, f1pediaRadioReconnectDelay);
+  }
+
+  function renderTeamRadioWidget() {
+    var el = document.getElementById("teamRadioWidget");
+    var drivers = state.DriverList || {};
+    var captures = [];
+
+    if (f1pediaRadioSnapshot && Array.isArray(f1pediaRadioSnapshot.team_radio)) {
+      var f1pediaDrivers = new Map((f1pediaRadioSnapshot.drivers || []).map(function (driver) {
+        return [String(driver.driver_number), driver];
+      }));
+
+      captures = f1pediaRadioSnapshot.team_radio.slice().reverse().slice(0, 12).map(function (radio) {
+        var driverNumber = String(radio.driver_number || "");
+        var driver = f1pediaDrivers.get(driverNumber) || {};
+        var acronym = radio.acronym || driver.name_acronym || driverNumber || "UNKNOWN";
+        var transcript = normalizeF1PediaTranscript(radio.transcript);
+        return {
+          Utc: radio.date || new Date().toISOString(),
+          RacingNumber: driverNumber,
+          Path: radio.recording_url || "",
+          Message: transcript.join("\n") || "Radio",
+          Transcription: transcript.join("\n"),
+          TranscriptionEs: transcript.join("\n"),
+          driver: driver,
+          acronym: acronym
+        };
+      });
+    } else {
+      captures = feedList(state.TeamRadio, "Captures");
+    }
+
+    var latest = captures[captures.length - 1];
+    var latestKey = latest ? (latest.Utc || "") + ":" + (latest.Path || "") : "";
+    if (latestKey && latestKey !== lastRadioKey && toolSettings.radioAutoplay && latest && latest.Path) playRadioCapture(latest);
+    lastRadioKey = latestKey;
+
+    var driverFilter = toolSettings.radioDriver, teamFilter = toolSettings.radioTeam;
+    captures = captures.filter(function (capture) {
+      var racingNumber = capture.RacingNumber || capture.driver_number || "";
+      var driver = drivers[racingNumber] || (capture.driver || {});
+      return (!driverFilter || String(racingNumber) === driverFilter) && (!teamFilter || driver.TeamName === teamFilter);
+    }).slice(-12).reverse();
+    currentRadioCaptures = captures;
+
+    var driverSelect = document.getElementById("radioDriver"), teamSelect = document.getElementById("radioTeam");
+    if (driverSelect) {
+      driverSelect.innerHTML = '<option value="">All drivers</option>' + Object.keys(drivers).map(function (num) { return '<option value="' + htmlSafe(num) + '">' + htmlSafe(drivers[num].Tla || num) + '</option>'; }).join("");
+      driverSelect.value = driverFilter;
+    }
+    if (teamSelect) {
+      var teams = Object.keys(drivers).map(function (num) { return drivers[num].TeamName; }).filter(Boolean).filter(function (team, index, list) { return list.indexOf(team) === index; });
+      teamSelect.innerHTML = '<option value="">All teams</option>' + teams.map(function (team) { return '<option value="' + htmlSafe(team) + '">' + htmlSafe(team) + '</option>'; }).join("");
+      teamSelect.value = teamFilter;
+    }
+    el.style.fontSize = toolSettings.radioFont + "%";
+    var playingDriver = radioPlaying && drivers[radioPlaying.RacingNumber];
+
+    el.innerHTML = '<h3>Team Radio</h3>' + (radioPlaying ? '<div class="now-playing-banner" style="background:#' + htmlSafe((playingDriver && playingDriver.TeamColour) || "444") + '">Now Playing: ' + htmlSafe((playingDriver && playingDriver.Tla) || radioPlaying.RacingNumber || "Team") + '</div>' : '') + (captures.length ? '<div class="radio-list"><table class="radio-table"><thead><tr>' + (toolSettings.radioShowTimestamp ? '<th>Time</th>' : '') + '<th>Driver</th><th>Transcript</th><th></th></tr></thead><tbody>' + captures.map(function (capture, index) {
+      var driver = drivers[capture.RacingNumber] || (capture.driver || {}), path = capture.Path || "";
+      var transcriptText = String(capture.Transcription || capture.TranscriptionEs || capture.Message || capture.Text || "").trim();
+      var transcriptHtml = transcriptText ? '<div class="radio-message-block"><div class="radio-transcript-list">' + transcriptText.split(/\r?\n+/).map(function (line) {
+        return '<div class="radio-transcript-line"><small>TXT</small>' + htmlSafe(String(line).trim()) + '</div>';
+      }).filter(function (line) { return line && line.indexOf("htmlSafe") !== -1; }).join("") + '</div></div>' : '<span class="widget-empty">No transcript</span>';
+      return '<tr>' + (toolSettings.radioShowTimestamp ? '<td>' + htmlSafe(capture.Utc ? new Date(capture.Utc).toLocaleTimeString() : "") + '</td>' : '') + '<td><div class="radio-driver-cell">' + driverIdentityHtml(driver, capture.RacingNumber || capture.driver_number) + '</div></td><td>' + transcriptHtml + '</td><td><button class="play-button" data-radio-index="' + index + '" title="Play">' + (radioPlaying && radioPlaying.Path === path ? "❚❚" : "►") + '</button></td></tr>';
+    }).join("") + '</tbody></table></div>' : '<div class="widget-empty">NO RADIO</div>');
+  }
+
+  connectF1PediaRadio();
+
+  // Team radio event delegation
+  document.getElementById("teamRadioWidget").addEventListener("click", function (e) {
+      var btn = e.target.closest(".play-button");
+      if (btn) {
+          var index = parseInt(btn.getAttribute("data-radio-index"), 10);
+          if (currentRadioCaptures[index]) playRadioCapture(currentRadioCaptures[index]);
+      }
+  });
+
+  function driverStints(num) {
+    var series = state.TyreStintSeries && state.TyreStintSeries.Stints;
+    if (series && series[num]) return Array.isArray(series[num]) ? series[num] : Object.keys(series[num]).map(function (key) { return series[num][key]; });
+    var appStints = state.TimingAppData && state.TimingAppData.Lines && state.TimingAppData.Lines[num] && state.TimingAppData.Lines[num].Stints;
+    return Array.isArray(appStints) ? appStints : [];
+  }
+
+  function tyreClass(compound) {
+    var value = String(compound || "UNKNOWN").toUpperCase();
+    return value === "SOFT" ? "tyre-soft" : value === "MEDIUM" ? "tyre-medium" : value === "HARD" ? "tyre-hard" : value === "INTERMEDIATE" ? "tyre-intermediate" : value === "WET" ? "tyre-wet" : "tyre-unknown";
+  }
+
+  function tyreLabel(compound) {
+    var value = String(compound || "UNKNOWN").toUpperCase();
+    return { SOFT: "S", MEDIUM: "M", HARD: "H", INTERMEDIATE: "I", WET: "W", UNKNOWN: "?" }[value] || value.charAt(0);
+  }
+
+  function renderTyreStrategyWidget() {
+    var el = document.getElementById("tyreStrategyWidget"), rows = liveDriverRows(), selected = toolSettings.tyreDriver;
+    var currentRaceLap = state.LapCount ? Number(state.LapCount.CurrentLap || 0) : 0;
+    var select = document.getElementById("tyreDriver");
+    if (select) {
+      select.innerHTML = '<option value="">All drivers</option>' + rows.map(function (row) { return '<option value="' + htmlSafe(row.num) + '">' + htmlSafe(row.driver.Tla || row.num) + '</option>'; }).join("");
+      select.value = selected;
+    }
+    el.style.fontSize = toolSettings.tyreFont + "%";
+    var visible = selected ? rows.filter(function (row) { return row.num === selected; }) : rows;
+    var maxLaps = 1;
+    visible.forEach(function (row) { 
+        driverStints(row.num).forEach(function (stint) { 
+            var total = Number(stint.TotalLaps || 0);
+            maxLaps = Math.max(maxLaps, total === 0 ? currentRaceLap : total); 
+        }); 
+    });
+    if (!visible.length || !visible.some(function (row) { return driverStints(row.num).length; })) {
+      el.innerHTML = '<h3>Tyre Strategy</h3><div class="widget-empty">Waiting for stints…</div>';
+      return;
+    }
+    el.innerHTML = '<h3>Tyre Strategy</h3><div class="driver-list-timeline">' + visible.map(function (row) {
+      var stints = driverStints(row.num);
+      var lastStintEnd = stints.length ? Number(stints[stints.length - 1].TotalLaps || 0) : 0;
+      var total = stints.length ? Math.max(maxLaps, lastStintEnd === 0 ? currentRaceLap : lastStintEnd) : maxLaps;
+      return '<div class="driver-row" data-tyre-driver="' + htmlSafe(row.num) + '"><div class="driver-info"><span class="position">' + htmlSafe(row.line.Position || "-") + '</span><span class="tla" style="color:' + htmlSafe(teamColor(row.driver.TeamColour, row.driver.Tla)) + '">' + htmlSafe(row.driver.Tla || row.num) + '</span></div><div class="stint-timeline">' + stints.map(function (stint) {
+        var endLap = Number(stint.TotalLaps || 0);
+        if (endLap === 0) endLap = currentRaceLap; // Use current lap if stint isn't finished
+        var laps = Math.max(1, endLap - Number(stint.StartLaps || 0));
+        return '<div class="stint-segment" style="width:' + Math.max(4, laps / total * 100) + '%"><div class="stint-line ' + tyreClass(stint.Compound) + '"></div><div class="stint-pill ' + tyreClass(stint.Compound) + '">' + tyreLabel(stint.Compound) + ' <span>' + laps + '</span></div></div>';
+      }).join("") + '</div></div>';
+    }).join("") + '</div>';
+    if (selected) {
+      var detail = driverStints(selected).slice().reverse();
+      el.innerHTML += '<div class="tyre-detail"><table><tbody>' + detail.map(function (stint, index) {
+        var endLap = Number(stint.TotalLaps || 0);
+        if (endLap === 0) endLap = currentRaceLap;
+        return '<tr><td>' + tyreLabel(stint.Compound) + '</td><td>' + (endLap - Number(stint.StartLaps || 0)) + ' laps</td><td>' + (index === 0 ? 'Current' : 'Completed') + '</td></tr>';
+      }).join("") + '</tbody></table></div>';
+    }
+  }
+
+  // Tyre widget event delegation
+  document.getElementById("tyreStrategyWidget").addEventListener("click", function (e) {
+      var row = e.target.closest("[data-tyre-driver]");
+      if (row) {
+          toolSettings.tyreDriver = row.getAttribute("data-tyre-driver");
+          dirty = true;
+          saveLayoutNow();
+      }
+  });
+
+  function renderWeatherWidget() {
+    var el = document.getElementById("weatherWidget"), weather = state.WeatherData || {};
+    var metrics = [
+      { key: "AirTemp", label: "Air Temp", icon: "☀", suffix: "°C", enabled: toolSettings.weatherAirTemp },
+      { key: "TrackTemp", label: "Track Temp", icon: "◉", suffix: "°C", enabled: toolSettings.weatherTrackTemp },
+      { key: "Humidity", label: "Humidity", icon: "≋", suffix: "%", enabled: toolSettings.weatherHumidity },
+      { key: "Pressure", label: "Pressure", icon: "↕", suffix: " hPa", enabled: toolSettings.weatherPressure },
+      { key: "WindSpeed", label: "Wind Speed", icon: "↝", suffix: " kph", enabled: toolSettings.weatherWindSpeed },
+      { key: "WindDirection", label: "Direction", icon: "⊙", suffix: "°", enabled: toolSettings.weatherWindDirection },
+      { key: "Rainfall", label: "Rainfall", icon: "☂", suffix: "%", enabled: toolSettings.weatherRainfall }
+    ];
+    el.style.fontSize = toolSettings.weatherFont + "%";
+    if (!Object.keys(weather).length) {
+      el.innerHTML = '<h3>Weather</h3><div class="widget-empty">Waiting for weather…</div>';
+      return;
+    }
+    metrics.forEach(function (metric) {
+      if (weather[metric.key] !== undefined && previousWeather[metric.key] !== undefined && String(weather[metric.key]) !== String(previousWeather[metric.key])) {
+        weatherFlash[metric.key] = true;
+        setTimeout(function () { weatherFlash[metric.key] = false; renderWeatherWidget(); }, 700);
+      }
+    });
+    var visible = metrics.filter(function (metric) { return metric.enabled; });
+    el.innerHTML = '<h3>Weather</h3><div class="weather-list">' + visible.map(function (metric) {
+      var value = weather[metric.key] === undefined || weather[metric.key] === null || weather[metric.key] === "" ? "--" : htmlSafe(weather[metric.key]) + metric.suffix;
+      return '<div class="weather-item"><div class="label-container"><span class="weather-icon" aria-hidden="true">' + metric.icon + '</span><span class="label">' + metric.label + '</span></div><span class="value' + (weatherFlash[metric.key] ? ' value-changed' : '') + '">' + value + '</span></div>';
+    }).join("") + '</div>';
+    previousWeather = Object.assign({}, weather);
+  }
+
+  function renderTrackStatusWidget() {
+    const el = document.getElementById('trackStatusWidget');
+    if (!el) return;
+    const status = state.TrackStatus || {};
+    const code = String(status.Status || '');
+    const message = String(status.Message || '');
+    const kind = message === 'AllClear' || code === '1' ? 'green' : message === 'Yellow' || code === '2' ? 'yellow' : message === 'SCDeployed' || message === 'VSCDeployed' || code === '4' || code === '6' ? 'safety' : message === 'Red' || code === '5' ? 'red' : 'off';
+    const label = message === 'SCDeployed' ? 'SC' : message === 'VSCDeployed' ? 'VSC' : kind === 'green' ? 'CLEAR' : kind === 'yellow' ? 'YELLOW' : kind === 'red' ? 'RED' : 'UNKNOWN';
+    el.innerHTML = '<div class="track-status-widget flag-' + kind + (kind === 'safety' ? ' flag-safety-car' : '') + '"><span class="flag-text">' + label + '</span></div>';
+  }
+
+  function playRadioCapture(capture) {
+    var sessionPath = state.SessionInfo && state.SessionInfo.Path || "", path = capture && capture.Path;
+    if (!path || !sessionPath) return;
+    if (radioPlaying && radioPlaying.Path === path && radioAudio) {
+      radioAudio.pause();
+      // Drop connection to prevent memory leak
+      radioAudio.src = "";
+      radioAudio.removeAttribute('src');
+      radioAudio.load();
+      radioAudio = null; 
+      radioPlaying = null; 
+      dirty = true; 
+      return;
+    }
+    if (radioAudio) {
+        radioAudio.pause();
+        radioAudio.src = "";
+        radioAudio.removeAttribute('src');
+        radioAudio.load();
+    }
+    var base = "https://livetiming.formula1.com/static/" + sessionPath.replace(/\/+$/, "") + "/";
+    radioAudio = new Audio(base + path.replace(/^\/+/, ""));
+    radioPlaying = capture;
+    radioAudio.addEventListener("ended", function () { radioAudio = null; radioPlaying = null; dirty = true; });
+    radioAudio.play().catch(function () { radioAudio = null; radioPlaying = null; dirty = true; });
+    dirty = true;
+  }
+
+  function renderLiveWidgets() {
+    renderBattleWidget();
+    renderFlyingLapWidget();
+    renderPitStrategyWidget();
+    renderRaceControlWidget();
+    renderTeamRadioWidget();
+    renderTyreStrategyWidget();
+    renderTrackStatusWidget();
+    renderWeatherWidget();
+  }
+
+  function renderHeader() {
+    var info = state.SessionInfo;
+    if (info) {
+      var country = info.Meeting && info.Meeting.Country && info.Meeting.Country.Name;
+      connEl.meetingName.textContent = (info.Meeting && info.Meeting.Name) ? info.Meeting.Name + (country ? " — " + country : "") : "Live Session";
+      connEl.sessionName.textContent = info.Name || info.Type || "";
+    }
+    var lc = state.LapCount;
+    connEl.lapCountEl.textContent = (lc && lc.CurrentLap) ? ("Lap " + lc.CurrentLap + "/" + (lc.TotalLaps || "?")) : "";
+
+    var clock = state.ExtrapolatedClock;
+    var ms = clock ? getRemainingMs(clock) : null;
+    connEl.clockEl.textContent = ms !== null ? msToClock(ms) : "--:--:--";
+  }
+
+  function render() {
+    sessionMode = detectSessionMode();
+    renderHead();
+    renderHeader();
+    renderBody();
+    renderLiveWidgets();
+  }
+
+  /* ======================================================================
+   * Settings UI & GridStack Layout Management Persistence
+   * ==================================================================== */
+  document.querySelectorAll(".settings-pop .toggle").forEach(function (el) {
+    el.addEventListener("click", function () {
+      var key = el.getAttribute("data-key");
+      settings[key] = !settings[key];
+      el.classList.toggle("on", settings[key]);
+      saveLayoutNow();
+      render();
+    });
+  });
+
+  document.getElementById("fontSlider").addEventListener("input", function (e) {
+    settings.messageFontSize = parseInt(e.target.value, 10);
+    document.getElementById("timingTable").style.fontSize = settings.messageFontSize + "%";
+    saveLayoutNow();
+  });
+
+  document.getElementById("settingsBtn").addEventListener("click", function (e) {
+    e.stopPropagation();
+    document.getElementById("settingsPop").classList.toggle("open");
+  });
+  document.addEventListener("click", function (e) {
+    var pop = document.getElementById("settingsPop");
+    if (!pop.contains(e.target) && e.target.id !== "settingsBtn") pop.classList.remove("open");
+  });
+
+  document.getElementById("collapseBtn").addEventListener("click", function () {
+    document.getElementById("widgetBody").classList.toggle("collapsed");
+    saveLayoutNow();
+  });
+
+  document.getElementById("lockWidgetsBtn").addEventListener("click", function () {
+    widgetsLocked = !widgetsLocked;
+    document.body.classList.toggle("widgets-locked", widgetsLocked);
+    this.title = widgetsLocked ? "Unlock widgets" : "Lock widgets";
+    setLockIcon(this, widgetsLocked);
+    
+    if (widgetsLocked) {
+      grid.disable();
+    } else {
+      grid.enable();
+    }
+    saveLayoutNow();
+  });
+
+  function setLockIcon(button, locked) {
+    button.style.color = locked ? "var(--red)" : "var(--green)";
+    button.innerHTML = locked
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10" width="14" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10" width="14" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 7.2-2.4"></path><path d="M16 3v5h5"></path></svg>';
+  }
+
+  function saveLayoutNow() {
+    return;
+  }
+
+  function loadLayoutFromStorage() {
+    return;
+  }
+
+  function refreshPresetSelect() {
+    var select = document.getElementById("presetSelect");
+    if (!select) return;
+    select.innerHTML = "";
+  }
+
+  function resetLayout() {
+    return;
+  }
+
+  function exportLayout() {
+    return;
+  }
+
+  function importLayout() {
+    return;
+  }
+
+  function showWelcomeModal() {
+    return;
+  }
+
+  function dismissWelcomeModal() {
+    return;
+  }
+
+  function updateDock() {
+    var dock = document.getElementById("widgetDock");
+    dock.innerHTML = "";
+    document.querySelectorAll(".grid-stack-item").forEach(function (el) {
+      if (el.classList.contains("widget-hidden") || el.style.display === "none") {
+        var title = el.querySelector(".name") ? el.querySelector(".name").textContent : "Widget";
+        var button = document.createElement("button");
+        button.textContent = title + "  ▴";
+        button.addEventListener("click", function () {
+          grid.show(el);
+          el.classList.remove("widget-hidden");
+          updateDock();
+          saveLayoutNow();
+        });
+        dock.appendChild(button);
+      }
+    });
+  }
+
+  function closeWidgetMenu() {
+    var menu = document.getElementById("visibilityMenu");
+    if (menu) menu.remove();
+  }
+
+  function showWidgetMenu() {
+    var existing = document.getElementById("visibilityMenu");
+    if (existing) { existing.remove(); return; }
+    var menu = document.createElement("div"); menu.id = "visibilityMenu"; menu.className = "settings-pop layout-pop";
+    document.querySelectorAll(".grid-stack-item").forEach(function (el) {
+      var title = el.querySelector(".name") ? el.querySelector(".name").textContent : "Widget";
+      var label = document.createElement("label"); label.className = "settings-row";
+      var checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.checked = !el.classList.contains("widget-hidden") && el.style.display !== "none";
+      checkbox.addEventListener("change", function () {
+        if (checkbox.checked) {
+          grid.show(el);
+          el.classList.remove("widget-hidden");
+        } else {
+          grid.hide(el);
+          el.classList.add("widget-hidden");
+        }
+        updateDock();
+        saveLayoutNow();
+      });
+      label.innerHTML = "<span>" + htmlSafe(title) + "</span>"; label.appendChild(checkbox); menu.appendChild(label);
+    });
+    document.getElementById("layoutPop").appendChild(menu);
+  }
+
+  document.getElementById("layoutBtn").addEventListener("click", function (e) {
+    e.stopPropagation();
+    closeWidgetMenu();
+    document.getElementById("layoutControls").classList.toggle("open");
+  });
+  var presetSelect = document.getElementById("presetSelect");
+  if (presetSelect) {
+    presetSelect.addEventListener("change", function () {
+      syncToolControls(); updateDock();
+      render();
+    });
+  }
+  var savePresetBtn = document.getElementById("savePresetBtn");
+  if (savePresetBtn) {
+    savePresetBtn.addEventListener("click", function () {
+      refreshPresetSelect();
+    });
+  }
+  var deletePresetBtn = document.getElementById("deletePresetBtn");
+  if (deletePresetBtn) {
+    deletePresetBtn.addEventListener("click", function () {
+      refreshPresetSelect();
+    });
+  }
+  var resetLayoutBtn = document.getElementById("resetLayoutBtn");
+  if (resetLayoutBtn) {
+    resetLayoutBtn.addEventListener("click", resetLayout);
+  }
+  var exportLayoutBtn = document.getElementById("exportLayoutBtn");
+  if (exportLayoutBtn) {
+    exportLayoutBtn.addEventListener("click", exportLayout);
+  }
+  var importLayoutBtn = document.getElementById("importLayoutBtn");
+  if (importLayoutBtn) {
+    importLayoutBtn.addEventListener("click", function () {
+      var input = document.getElementById("layoutFileInput");
+      if (input) input.click();
+    });
+  }
+  var layoutFileInput = document.getElementById("layoutFileInput");
+  if (layoutFileInput) {
+    layoutFileInput.addEventListener("change", function () { this.value = ""; });
+  }
+  var tileWidgetsBtn = document.getElementById("tileWidgetsBtn");
+  if (tileWidgetsBtn) {
+    tileWidgetsBtn.addEventListener("click", function () { grid.compact(); saveLayoutNow(); });
+  }
+  var showWidgetsBtn = document.getElementById("showWidgetsBtn");
+  if (showWidgetsBtn) {
+    showWidgetsBtn.addEventListener("click", showWidgetMenu);
+  }
+
+  /* Setup tool window events inside GridStack items */
+  document.querySelectorAll(".grid-stack-item").forEach(function (win) {
+    var settingsBtn = win.querySelector(".tool-settings");
+    if (settingsBtn) {
+      settingsBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var pop = win.querySelector(".tool-settings-pop");
+        if (pop) pop.classList.toggle("open");
+      });
+    }
+
+    win.querySelectorAll("input, select").forEach(function (control) {
+      control.addEventListener("input", updateToolSettings);
+      control.addEventListener("change", updateToolSettings);
+    });
+  });
+
+  grid.on('change', function () {
+    saveLayoutNow();
+  });
+
+  function updateToolSettings() {
+    var ba = document.getElementById("battleAuto");
+    if (ba) toolSettings.battleAuto = ba.checked;
+    var bt = document.getElementById("battleThreshold");
+    if (bt) toolSettings.battleThreshold = parseFloat(bt.value) || 1.5;
+    var bs = document.getElementById("battleSelect");
+    if (bs) toolSettings.battleSelect = bs.value;
+    var fa = document.getElementById("flyingAuto");
+    if (fa) toolSettings.flyingAuto = fa.checked;
+    var fs = document.getElementById("flyingSelect");
+    if (fs) toolSettings.flyingSelect = fs.value;
+    var ff = document.getElementById("flyingFont");
+    if (ff) toolSettings.flyingFont = parseInt(ff.value, 10) || 90;
+    var pf = document.getElementById("pitFont");
+    if (pf) toolSettings.pitFont = parseInt(pf.value, 10) || 90;
+    var pd = document.getElementById("pitDriver");
+    if (pd) toolSettings.pitDriver = pd.value;
+    var rst = document.getElementById("raceShowTimestamp");
+    if (rst) toolSettings.raceShowTimestamp = rst.checked;
+    var rsc = document.getElementById("raceShowCategory");
+    if (rsc) toolSettings.raceShowCategory = rsc.checked;
+    toolSettings.raceCategories = Array.prototype.map.call(document.querySelectorAll(".race-category:checked"), function (control) { return control.value; });
+    var rf = document.getElementById("raceFont");
+    if (rf) toolSettings.raceFont = parseInt(rf.value, 10) || 90;
+    var rst2 = document.getElementById("radioShowTimestamp");
+    if (rst2) toolSettings.radioShowTimestamp = rst2.checked;
+    var ra = document.getElementById("radioAutoplay");
+    if (ra) toolSettings.radioAutoplay = ra.checked;
+    var rd = document.getElementById("radioDriver");
+    if (rd) toolSettings.radioDriver = rd.value;
+    var rt = document.getElementById("radioTeam");
+    if (rt) toolSettings.radioTeam = rt.value;
+    var raf = document.getElementById("radioFont");
+    if (raf) toolSettings.radioFont = parseInt(raf.value, 10) || 90;
+    var td = document.getElementById("tyreDriver");
+    if (td) toolSettings.tyreDriver = td.value;
+    var tip = document.getElementById("tyreIgnorePitted");
+    if (tip) toolSettings.tyreIgnorePitted = tip.checked;
+    var tf = document.getElementById("tyreFont");
+    if (tf) toolSettings.tyreFont = parseInt(tf.value, 10) || 90;
+    var wf = document.getElementById("weatherFont");
+    if (wf) toolSettings.weatherFont = parseInt(wf.value, 10) || 90;
+    var wat = document.getElementById("weatherAirTemp");
+    if (wat) toolSettings.weatherAirTemp = wat.checked;
+    var wtt = document.getElementById("weatherTrackTemp");
+    if (wtt) toolSettings.weatherTrackTemp = wtt.checked;
+    var wh = document.getElementById("weatherHumidity");
+    if (wh) toolSettings.weatherHumidity = wh.checked;
+    var wp = document.getElementById("weatherPressure");
+    if (wp) toolSettings.weatherPressure = wp.checked;
+    var wws = document.getElementById("weatherWindSpeed");
+    if (wws) toolSettings.weatherWindSpeed = wws.checked;
+    var wwd = document.getElementById("weatherWindDirection");
+    if (wwd) toolSettings.weatherWindDirection = wwd.checked;
+    var wr = document.getElementById("weatherRainfall");
+    if (wr) toolSettings.weatherRainfall = wr.checked;
+    
+    dirty = true;
+    saveLayoutNow();
+  }
+
+  function syncToolControls() {
+    document.querySelectorAll(".settings-pop .toggle[data-key]").forEach(function (toggle) { toggle.classList.toggle("on", !!settings[toggle.getAttribute("data-key")]); });
+    var fs = document.getElementById("fontSlider");
+    if (fs) { fs.value = settings.messageFontSize; document.getElementById("timingTable").style.fontSize = settings.messageFontSize + "%"; }
+    
+    if (document.getElementById("battleAuto")) document.getElementById("battleAuto").checked = !!toolSettings.battleAuto;
+    if (document.getElementById("battleThreshold")) document.getElementById("battleThreshold").value = toolSettings.battleThreshold;
+    if (document.getElementById("flyingAuto")) document.getElementById("flyingAuto").checked = !!toolSettings.flyingAuto;
+    if (document.getElementById("flyingFont")) document.getElementById("flyingFont").value = toolSettings.flyingFont;
+    if (document.getElementById("pitFont")) document.getElementById("pitFont").value = toolSettings.pitFont;
+    if (document.getElementById("pitDriver")) document.getElementById("pitDriver").value = toolSettings.pitDriver;
+    if (document.getElementById("raceShowTimestamp")) document.getElementById("raceShowTimestamp").checked = !!toolSettings.raceShowTimestamp;
+    if (document.getElementById("raceShowCategory")) document.getElementById("raceShowCategory").checked = !!toolSettings.raceShowCategory;
+    if (document.getElementById("raceFont")) document.getElementById("raceFont").value = toolSettings.raceFont;
+    document.querySelectorAll(".race-category").forEach(function (control) { control.checked = toolSettings.raceCategories.indexOf(control.value) >= 0; });
+    if (document.getElementById("radioShowTimestamp")) document.getElementById("radioShowTimestamp").checked = !!toolSettings.radioShowTimestamp;
+    if (document.getElementById("radioAutoplay")) document.getElementById("radioAutoplay").checked = !!toolSettings.radioAutoplay;
+    if (document.getElementById("radioFont")) document.getElementById("radioFont").value = toolSettings.radioFont;
+    if (document.getElementById("tyreIgnorePitted")) document.getElementById("tyreIgnorePitted").checked = !!toolSettings.tyreIgnorePitted;
+    if (document.getElementById("tyreFont")) document.getElementById("tyreFont").value = toolSettings.tyreFont;
+    if (document.getElementById("weatherFont")) document.getElementById("weatherFont").value = toolSettings.weatherFont;
+    if (document.getElementById("weatherAirTemp")) document.getElementById("weatherAirTemp").checked = !!toolSettings.weatherAirTemp;
+    if (document.getElementById("weatherTrackTemp")) document.getElementById("weatherTrackTemp").checked = !!toolSettings.weatherTrackTemp;
+    if (document.getElementById("weatherHumidity")) document.getElementById("weatherHumidity").checked = !!toolSettings.weatherHumidity;
+    if (document.getElementById("weatherPressure")) document.getElementById("weatherPressure").checked = !!toolSettings.weatherPressure;
+    if (document.getElementById("weatherWindSpeed")) document.getElementById("weatherWindSpeed").checked = !!toolSettings.weatherWindSpeed;
+    if (document.getElementById("weatherWindDirection")) document.getElementById("weatherWindDirection").checked = !!toolSettings.weatherWindDirection;
+    if (document.getElementById("weatherRainfall")) document.getElementById("weatherRainfall").checked = !!toolSettings.weatherRainfall;
+  }
+
+  document.addEventListener("click", function (e) {
+    document.querySelectorAll(".tool-settings-pop.open").forEach(function (pop) {
+      if (!pop.contains(e.target) && !e.target.closest(".tool-settings")) pop.classList.remove("open");
+    });
+    var layoutControls = document.getElementById("layoutControls");
+    if (layoutControls && !layoutControls.contains(e.target)) {
+      closeWidgetMenu();
+      layoutControls.classList.remove("open");
+    }
+  });
+
+  /* ======================================================================
+   * Boot Loop Tickers
+   * ==================================================================== */
+  setInterval(function () { if (dirty) { dirty = false; render(); } }, 1000);
+  setInterval(function () {
+    var clock = state.ExtrapolatedClock;
+    if (clock) {
+      var ms = getRemainingMs(clock);
+      connEl.clockEl.textContent = ms !== null ? msToClock(ms) : "--:--:--";
+    }
+  }, 1000);
+
+  syncToolControls();
+  updateDock();
+  render();
+  connect();
+})();
+</script>
+</body>
+</html>

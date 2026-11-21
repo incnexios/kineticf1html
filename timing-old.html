@@ -1,0 +1,2712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>F1 PITWALL / MACOS GLASS EDITION</title>
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script>
+        // Check if the user agent matches common mobile devices
+        if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+            // Redirect to your mobile site URL
+            window.location.replace("/mobile-timing.html");
+        }
+    </script>
+<!-- Pako, GridStack & Chart.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack.min.css" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+
+<style>
+:root {
+  --bg-deep: #06070a;
+  --glass-surface: rgba(18, 20, 29, 0.65);
+  --glass-header: rgba(24, 28, 42, 0.78);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-border-bright: rgba(255, 255, 255, 0.22);
+  --glass-specular: inset 0 1px 0 0 rgba(255, 255, 255, 0.2), inset 0 0 18px 0 rgba(255, 255, 255, 0.02);
+  --glass-shadow: 0 20px 48px rgba(0, 0, 0, 0.65), 0 4px 12px rgba(0, 0, 0, 0.4);
+
+  --text-main: #f5f6fa;
+  --text-sub: #9ca3af;
+  --text-dim: #64748b;
+
+  --f1-red: #ff3b30;
+  --f1-amber: #ff9f0a;
+  --f1-green: #34c759;
+  --f1-cyan: #32d74b;
+  --f1-purple: #af52de;
+  --f1-blue: #0a84ff;
+  --f1-accent: #00f2fe;
+
+  --tyre-soft: #e74c3c;
+  --tyre-med: #f1c40f;
+  --tyre-hard: #ffffff;
+  --tyre-inter: #27ae60;
+  --tyre-wet: #2d04e4;
+
+  --mac-close: #ff5f57;
+  --mac-min: #febc2e;
+  --mac-max: #28c840;
+
+  --status-glow: rgba(0, 242, 254, 0.10);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  margin: 0; padding: 0; width: 100%; height: 100%;
+  overflow: hidden; background: var(--bg-deep);
+  color: var(--text-main); font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+  user-select: none;
+}
+
+body::before {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    linear-gradient(135deg, rgba(6, 7, 10, 0.94), rgba(6, 7, 10, 0.64) 48%, rgba(6, 7, 10, 0.92)),
+    radial-gradient(circle at 50% 20%, var(--status-glow) 0%, transparent 58%),
+    radial-gradient(circle at 18% 12%, rgba(255, 59, 48, 0.10) 0%, transparent 45%),
+    radial-gradient(circle at 82% 20%, rgba(10, 132, 255, 0.12) 0%, transparent 40%),
+    radial-gradient(circle at 50% 85%, rgba(175, 82, 222, 0.08) 0%, transparent 50%);
+  filter: blur(48px) saturate(135%);
+  transform: scale(1.08);
+  transition: background 0.45s ease, filter 0.45s ease;
+}
+body.status-clear { --status-glow: rgba(52, 199, 89, 0.22); }
+body.status-yellow { --status-glow: rgba(255, 214, 10, 0.38); }
+body.status-safety { --status-glow: rgba(255, 159, 10, 0.34); }
+body.status-red { --status-glow: rgba(255, 59, 48, 0.42); }
+body.status-yellow::before { animation: dashboard-yellow-pulse 1s infinite step-end; }
+body.status-safety::before { animation: dashboard-safety-pulse 1s infinite ease-in-out; }
+body.status-red::before { animation: dashboard-red-pulse .8s infinite step-end; }
+@keyframes dashboard-yellow-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .32; }
+}
+@keyframes dashboard-safety-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .48; }
+}
+@keyframes dashboard-red-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .28; }
+}
+
+#desktop {
+  position: relative; z-index: 1; display: flex; flex-direction: column;
+  height: 100vh; width: 100vw; overflow: hidden;
+}
+
+/* ============================================================
+   macOS LIQUID GLASS TOP MENU BAR
+   ============================================================ */
+.macos-menubar {
+  height: 42px; min-height: 42px; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px; background: rgba(12, 14, 22, 0.68);
+  backdrop-filter: blur(28px) saturate(210%);
+  -webkit-backdrop-filter: blur(28px) saturate(210%);
+  border-bottom: 1px solid var(--glass-border);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+  font-size: 12px; z-index: 100;
+}
+.menu-left, .menu-center, .menu-right { display: flex; align-items: center; gap: 12px; }
+
+.f1-apple-logo {
+  display: flex; align-items: center; gap: 7px; font-weight: 800; font-size: 13px;
+  letter-spacing: .8px; color: #fff; cursor: default;
+}
+.f1-apple-logo svg { width: 16px; height: 16px; fill: var(--f1-red); }
+.session-pill {
+  background: rgba(255,255,255,0.06); padding: 4px 10px; border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.08); font-weight: 600; color: var(--text-sub);
+  display: flex; align-items: center; gap: 6px;
+}
+.status-badge {
+  display: flex; align-items: center; gap: 6px; font-weight: 700;
+  padding: 3px 9px; border-radius: 6px; font-size: 11px;
+  background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border);
+}
+.status-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--f1-green);
+  box-shadow: 0 0 8px var(--f1-green); animation: pulse 1.8s infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1; transform:scale(1);} 50%{opacity:.4; transform:scale(.85);} }
+
+.menu-center {
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: var(--glass-specular);
+  border-radius: 20px; padding: 4px 14px; gap: 14px;
+}
+.tele-item { display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-family:'JetBrains Mono',monospace; }
+.tele-item b { color: #fff; font-weight: 600; }
+.tele-item span.unit { color: var(--text-dim); font-size: 9.5px; }
+
+.clock-item {
+  color: var(--f1-amber); font-weight: 700; font-family: 'JetBrains Mono', monospace;
+  font-size: 13px; letter-spacing: .5px;
+}
+
+.feed-indicators { display: flex; align-items: center; gap: 8px; font-size: 10.5px; font-family: 'JetBrains Mono', monospace; }
+.feed-tag { display: flex; align-items: center; gap: 5px; color: var(--text-dim); }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); }
+.dot.live { background: var(--f1-green); box-shadow: 0 0 6px var(--f1-green); }
+.dot.off { background: var(--f1-red); }
+
+/* ============================================================
+   GRIDSTACK WORKSPACE & GLASS WINDOW PANELS
+   ============================================================ */
+.workspace-wrapper {
+  flex: 1; overflow-y: auto; overflow-x: hidden; padding: 14px 14px 78px;
+  position: relative;
+}
+.grid-stack { min-height: 100%; }
+
+.grid-stack-item-content {
+  background: var(--glass-surface) !important;
+  backdrop-filter: blur(28px) saturate(190%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(190%) !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: var(--glass-shadow), var(--glass-specular) !important;
+  border-radius: 14px !important;
+  display: flex !important; flex-direction: column !important;
+  overflow: hidden !important;
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+.grid-stack-item:hover .grid-stack-item-content {
+  border-color: var(--glass-border-bright) !important;
+}
+
+.mac-titlebar {
+  height: 38px; min-height: 38px; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 12px; background: var(--glass-header);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: grab;
+  position: relative;
+  z-index: 5;
+}
+.mac-titlebar:active { cursor: grabbing; }
+
+.traffic-lights { display: flex; align-items: center; gap: 7px; }
+.traffic-btn {
+  width: 11px; height: 11px; border-radius: 50%; border: none; padding: 0;
+  cursor: pointer; position: relative; transition: transform .12s, filter .12s;
+}
+.traffic-btn:hover { transform: scale(1.1); filter: brightness(1.2); }
+.traffic-close { background: var(--mac-close); }
+.traffic-min { background: var(--mac-min); }
+.traffic-max { background: var(--mac-max); }
+
+.mac-title {
+  font-size: 11.5px; font-weight: 700; letter-spacing: .4px; color: var(--text-main);
+  display: flex; align-items: center; gap: 6px; text-transform: uppercase;
+}
+.mac-actions { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text-dim); }
+.timing-settings-btn {
+  width: 22px; height: 22px; border: 1px solid var(--glass-border); border-radius: 6px;
+  background: rgba(255,255,255,0.06); color: var(--text-sub); cursor: pointer; font-size: 12px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.timing-settings-btn:hover { background: rgba(255,255,255,0.14); color: var(--text-main); }
+.timing-settings-pop {
+  position: absolute; top: 34px; right: 8px; width: 220px; max-height: 360px; overflow-y: auto;
+  display: none; flex-direction: column; gap: 3px; padding: 8px;
+  background: rgba(18, 22, 34, 0.96); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--glass-border-bright); border-radius: 9px; box-shadow: var(--glass-shadow);
+  z-index: 30;
+}
+.timing-settings-pop.open { display: flex; }
+.timing-settings-title { color: var(--text-dim); font-size: 9px; text-transform: uppercase; letter-spacing: .5px; padding: 4px 6px; }
+.timing-settings-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 6px; border-radius: 5px; color: var(--text-sub); font-size: 10px; }
+.timing-settings-row:hover { background: rgba(255,255,255,0.06); color: var(--text-main); }
+.timing-toggle { width: 28px; height: 16px; border: 1px solid var(--glass-border); border-radius: 10px; background: rgba(255,255,255,0.08); position: relative; cursor: pointer; }
+.timing-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--text-dim); transition: transform .15s, background .15s; }
+.timing-toggle.on { background: rgba(0,242,254,.2); border-color: var(--f1-accent); }
+.timing-toggle.on::after { transform: translateX(12px); background: var(--f1-accent); }
+.timing-status-banner { padding: 5px 10px; text-align: center; font-size: 9.5px; font-weight: 800; letter-spacing: .5px; color: var(--text-dim); background: rgba(255,255,255,.025); border-bottom: 1px solid rgba(255,255,255,.06); }
+.timing-status-banner.clear { color: var(--f1-green); background: rgba(52,199,89,.10); }
+.timing-status-banner.yellow { color: var(--f1-amber); background: rgba(255,159,10,.12); }
+.timing-status-banner.sc, .timing-status-banner.vsc { color: #ff5fd0; background: rgba(255,47,176,.10); }
+.timing-status-banner.red { color: #ff6b66; background: rgba(255,59,48,.14); }
+.sector-cell-content { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 42px; }
+.minisector-container { display: flex; gap: 1px; height: 5px; align-items: center; }
+.minisector { width: 5px; height: 5px; border-radius: 1px; background: #555; }
+.minisector-set { background: #fdd835; }
+.minisector-pb { background: #4caf50; }
+.minisector-ob { background: #b13bff; }
+.minisector-pit { background: #2196f3; }
+
+.mac-window-body {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  padding: 10px; position: relative;
+}
+.mac-window-body::-webkit-scrollbar { width: 5px; height: 5px; }
+.mac-window-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+
+/* ============================================================
+   SHARED GLASS TABLE STYLES
+   ============================================================ */
+.glass-table {
+  width: 100%; border-collapse: collapse; font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; white-space: nowrap;
+}
+.glass-table th {
+  position: sticky; top: 0; background: var(--glass-header); z-index: 2;
+  padding: 5px 6px; text-align: left; font-weight: 700; color: var(--text-dim);
+  font-size: 9.5px; text-transform: uppercase; border-bottom: 1px solid var(--glass-border);
+}
+.glass-table td {
+  padding: 5px 6px; border-bottom: 1px solid rgba(255,255,255,0.04);
+  transition: background .12s;
+}
+.glass-table tr.clickable:hover td { background: rgba(255,255,255,0.06); cursor: pointer; }
+.glass-table tr.selected-driver td { background: rgba(0, 242, 254, 0.15) !important; color: #fff !important; }
+.glass-table tr.at-risk-elimination td { background: rgba(239, 68, 68, 0.22) !important; }
+.glass-table tr.driver-dimmed td { opacity: 0.45; color: #888; }
+
+.fastest-lap { color: var(--f1-purple); font-weight: 700; text-shadow: 0 0 8px rgba(175,82,222,0.4); }
+.gainer { color: var(--f1-green); font-weight: 700; }
+.loser { color: var(--f1-red); font-weight: 700; }
+.knocked-out-pos { color: #ff6347; font-weight: 800; }
+.tyre-age { color: var(--text-dim); font-size: 0.8em; margin-left: 2px; }
+.tla-cell { font-weight: 800; font-family: 'Plus Jakarta Sans', sans-serif; }
+.driver-identity { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.driver-identity { gap: 3px; }
+.driver-visual { width: 22px; height: 16px; flex: 0 0 22px; position: relative; display: inline-flex; align-items: center; justify-content: center; }
+.driver-number-art { width: 18px; height: 14px; object-fit: contain; }
+.driver-number-fallback { color: #fff; font: 800 10px 'JetBrains Mono', monospace; }
+.driver-team-only-logo { width: 42px; height: 18px; flex: 0 0 42px; object-fit: contain; }
+.tyre-icon { width: 18px; height: 18px; object-fit: contain; vertical-align: middle; }
+.flag-icon { width: 28px; height: 18px; object-fit: contain; flex-shrink: 0; vertical-align: middle; }
+.driver-identity-name { font-weight: 700; }
+.empty-hint { text-align: center; color: var(--text-dim); padding: 24px 10px; font-size: 11px; }
+
+/* ============================================================
+   2. TRACK MAP WITH ZOOM/PAN CAMERA CONTROLS
+   ============================================================ */
+.map-canvas-container {
+  width: 100%; height: 100%; position: relative; overflow: hidden; background: #0c0d12;
+  cursor: grab;
+}
+.map-canvas-container:active { cursor: grabbing; }
+.track-map-svg { width: 100%; height: 100%; display: block; }
+.track-outline { stroke: #2a2c3a; }
+
+.map-controls-floating {
+  position: absolute; top: 10px; right: 10px; z-index: 15;
+  display: flex; gap: 4px; background: rgba(18, 22, 34, 0.78);
+  backdrop-filter: blur(20px); border: 1px solid var(--glass-border-bright);
+  padding: 4px 6px; border-radius: 10px; box-shadow: var(--glass-shadow);
+}
+.map-ctrl-btn {
+  background: rgba(255,255,255,0.06); border: none; color: var(--text-main);
+  padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all .15s;
+}
+.map-ctrl-btn:hover { background: rgba(255,255,255,0.14); }
+.map-ctrl-btn.active { background: var(--f1-accent); color: #000; }
+
+.map-weather-overlay {
+  position: absolute; display: flex; flex-direction: column; gap: 4px;
+  background: rgba(10, 12, 18, 0.72); backdrop-filter: blur(14px);
+  padding: 6px 9px; border-radius: 8px; border: 1px solid var(--glass-border);
+  color: #fff; font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+  z-index: 10; pointer-events: none;
+}
+.map-weather--top-left { top: 10px; left: 10px; }
+.weather-item { display: flex; align-items: center; gap: 6px; }
+.wind-arrow { font-size: 14px; line-height: 1; transition: transform .3s ease; display: inline-block; }
+
+.map-selection-strip {
+  position: absolute; bottom: 8px; left: 10px; right: 10px; z-index: 20;
+  background: rgba(18, 22, 34, 0.85); backdrop-filter: blur(24px);
+  border: 1px solid var(--glass-border-bright); box-shadow: var(--glass-shadow);
+  border-radius: 10px; padding: 7px 12px; display: flex; align-items: center;
+  justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 11px;
+}
+.strip-col { display: flex; align-items: center; gap: 8px; }
+.strip-driver-tla { font-weight: 800; font-family: 'Plus Jakarta Sans', sans-serif; }
+.strip-gap { font-weight: 700; color: var(--f1-amber); }
+.strip-close {
+  background: rgba(255,255,255,0.08); border: none; color: #fff;
+  border-radius: 50%; width: 20px; height: 20px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; font-size: 10px;
+}
+
+/* ============================================================
+   3. COCKPIT TELEMETRY WIDGET
+   ============================================================ */
+.telem-dashboard { display: flex; flex-direction: column; gap: 12px; }
+.telem-driver-bar { display: flex; align-items: center; gap: 10px; }
+.telem-driver-avatar { width: 36px; height: 36px; border-radius: 50%; border: 1.5px solid var(--glass-border); }
+.telem-driver-info b { font-size: 16px; font-weight: 800; }
+.rpm-strip { display: flex; gap: 2.5px; height: 10px; }
+.rpm-strip i { flex: 1; border-radius: 2px; background: rgba(255,255,255,0.06); }
+.cockpit-stats { display: flex; align-items: baseline; justify-content: center; gap: 20px; }
+.big-speed { font-size: 44px; font-weight: 800; font-family: 'JetBrains Mono', monospace; }
+.big-speed span { font-size: 14px; color: var(--text-dim); margin-left: 4px; font-weight: 500; }
+.gear-box {
+  width: 52px; height: 52px; border-radius: 12px; background: rgba(255,255,255,0.04);
+  border: 1px solid var(--glass-border); display: flex; align-items: center;
+  justify-content: center; font-size: 32px; font-weight: 800; color: var(--f1-amber);
+  font-family: 'JetBrains Mono', monospace; box-shadow: inset 0 0 12px rgba(0,0,0,0.4);
+}
+.pedal-gauges { display: flex; flex-direction: column; gap: 8px; font-size: 11px; color: var(--text-sub); }
+.pedal-row { display: flex; align-items: center; gap: 8px; }
+.pedal-label { width: 62px; font-weight: 600; font-size: 10px; }
+.pedal-track { flex: 1; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.06); overflow: hidden; }
+.pedal-fill { height: 100%; border-radius: 4px; transition: width .08s ease; }
+.pedal-fill.thr { background: var(--f1-green); }
+.pedal-fill.brk { background: var(--f1-red); }
+.cockpit-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.cockpit-pill {
+  font-size: 10px; font-weight: 700; padding: 4px 10px; border-radius: 6px;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); color: var(--text-dim);
+}
+.cockpit-pill.active { color: var(--f1-green); border-color: var(--f1-green); box-shadow: 0 0 10px rgba(52, 199, 89, 0.2); }
+.cockpit-pill.active.aero { color: var(--f1-accent); border-color: var(--f1-accent); }
+.cockpit-pill.active.ot { color: var(--f1-purple); border-color: var(--f1-purple); }
+
+/* ============================================================
+   4. TEAM RADIO
+   ============================================================ */
+.radio-filter-wrap { margin-bottom: 8px; }
+.radio-select {
+  width: 100%; background: rgba(255,255,255,0.06); border: 1px solid var(--glass-border);
+  border-radius: 8px; color: var(--text-main); padding: 7px 10px; font-size: 11.5px;
+  outline: none; font-family: inherit;
+}
+.radio-feed-list { display: flex; flex-direction: column; gap: 8px; }
+.radio-card {
+  background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border);
+  border-left: 3px solid var(--f1-amber); border-radius: 8px; padding: 9px 11px;
+}
+.radio-meta { display: flex; align-items: center; gap: 8px; font-size: 11px; margin-bottom: 6px; }
+.radio-tla { font-weight: 800; font-family: 'JetBrains Mono', monospace; }
+.radio-time { margin-left: auto; color: var(--text-dim); font-size: 10px; }
+.radio-player-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.radio-play-btn {
+  width: 26px; height: 26px; border-radius: 50%; border: none; cursor: pointer;
+  background: var(--f1-amber); color: #000; display: flex; align-items: center;
+  justify-content: center; font-size: 10px; flex-shrink: 0; font-weight: bold;
+}
+.radio-track-seek { flex: 1; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; position: relative; cursor: pointer; }
+.radio-track-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; background: var(--f1-amber); border-radius: 2px; }
+.radio-line { font-size: 11.5px; line-height: 1.4; color: var(--text-sub); }
+.radio-line b { color: var(--f1-amber); margin-right: 5px; font-weight: 700; }
+
+/* ============================================================
+   5. TYRE STRATEGY & STINTS WIDGET
+   ============================================================ */
+.driver-list-timeline { display: flex; flex-direction: column; gap: 3px; overflow-y: auto; flex: 1; }
+.driver-timeline-row {
+  display: flex; align-items: center; background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.04); border-radius: 6px;
+  padding: 4px 8px; cursor: pointer; transition: background .15s;
+}
+.driver-timeline-row:hover { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.12); }
+.dt-info { display: flex; align-items: center; width: 85px; flex-shrink: 0; }
+.dt-pos { width: 24px; font-weight: 700; color: var(--text-dim); font-size: 11px; font-family: 'JetBrains Mono', monospace; }
+.dt-tla { font-weight: 800; font-size: 12px; }
+
+.stint-timeline { display: flex; flex-grow: 1; height: 20px; align-items: center; position: relative; margin-left: 8px; }
+.stint-segment { position: relative; height: 100%; display: flex; align-items: center; }
+.stint-line { position: absolute; width: 100%; height: 2px; top: 50%; transform: translateY(-50%); }
+.stint-pill {
+  position: relative; z-index: 1; display: flex; gap: 2px; align-items: center;
+  padding: 1px 5px; border-radius: 8px; color: #000; font-weight: 800;
+  font-size: 9px; font-family: 'JetBrains Mono', monospace; box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+
+.tyre-soft { background-color: var(--tyre-soft) !important; color: #fff !important; }
+.tyre-medium { background-color: var(--tyre-med) !important; color: #000 !important; }
+.tyre-hard { background-color: var(--tyre-hard) !important; color: #000 !important; }
+.tyre-intermediate { background-color: var(--tyre-inter) !important; color: #fff !important; }
+.tyre-wet { background-color: var(--tyre-wet) !important; color: #fff !important; }
+
+.battle-widget { height: 100%; padding: 10px; display: flex; flex-direction: column; align-items: stretch; justify-content: center; text-align: center; }
+.battle-content, .battle-table-container { width: 100%; }
+.battle-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+.battle-table td { padding: 3px; text-align: center; white-space: nowrap; border-bottom: 1px solid rgba(255,255,255,.04); }
+.battle-table tr { display: grid; grid-template-columns: 25% 27.5% 20% 27.5%; align-items: center; }
+.battle-table .main-info-row { font-size: 11px; font-weight: 700; }
+.battle-driver-info { display: flex; align-items: center; justify-content: center; gap: 4px; font-weight: 700; min-width: 0; }
+.battle-driver-portrait { width: 30px; height: 30px; flex: 0 0 30px; object-fit: cover; object-position: center top; border: 0; border-radius: 50%; filter: saturate(1.08); }
+.battle-metric-label { text-align: left !important; font-weight: 700; color: var(--text-dim); }
+.battle-diff { font-weight: 700; }
+.battle-gap { font-weight: 800; transition: color .3s ease-in-out; }
+.battle-gap-increasing { color: var(--f1-red); }
+.battle-gap-decreasing { color: var(--f1-green); }
+.battle-faster { color: var(--f1-green); font-weight: 700; }
+.battle-slower { color: var(--f1-red); }
+.battle-drs-indicator { width: 8px; height: 8px; border-radius: 50%; background: #555; flex: 0 0 8px; }
+.battle-drs-active { background: #4dff4d; box-shadow: 0 0 7px #4dff4d; }
+.battle-selection-prompt, .battle-empty-prompt { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-sub); font-size: 11px; gap: 8px; }
+.battle-selection-prompt h3 { margin: 0; color: var(--text-main); font-size: 12px; }
+.battle-select { width: 100%; background: rgba(255,255,255,.06); border: 1px solid var(--glass-border); border-radius: 7px; color: var(--text-main); padding: 6px 8px; font-size: 10px; }
+.battle-auto-btn { background: rgba(255,255,255,.06); color: var(--text-sub); border: 1px solid var(--glass-border); border-radius: 6px; padding: 4px 7px; font-size: 9px; cursor: pointer; }
+.battle-auto-btn.active { color: var(--f1-green); border-color: var(--f1-green); background: rgba(52,199,89,.12); }
+.battle-settings-btn { width: 22px; height: 22px; border: 1px solid var(--glass-border); border-radius: 6px; background: rgba(255,255,255,.06); color: var(--text-sub); cursor: pointer; }
+.battle-settings-btn:hover { background: rgba(255,255,255,.14); color: var(--text-main); }
+.battle-settings-pop { position: absolute; top: 34px; right: 8px; width: 220px; display: none; flex-direction: column; gap: 4px; padding: 8px; background: rgba(18,22,34,.97); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border: 1px solid var(--glass-border-bright); border-radius: 9px; box-shadow: var(--glass-shadow); z-index: 30; }
+.battle-settings-pop.open { display: flex; }
+.battle-settings-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-sub); font-size: 10px; padding: 4px 3px; }
+.battle-settings-title { color: var(--text-dim); font-size: 9px; text-transform: uppercase; letter-spacing: .5px; padding: 3px; }
+.battle-settings-select { width: 118px; min-width: 0; background: rgba(255,255,255,.06); border: 1px solid var(--glass-border); border-radius: 5px; color: var(--text-main); padding: 4px; font-size: 9px; }
+.battle-settings-slider { width: 100px; accent-color: var(--f1-accent); }
+.battle-settings-check { accent-color: var(--f1-accent); }
+.flying-lap-widget { height: 100%; padding: 10px; color: #fff; display: flex; flex-direction: column; font-size: 100%; }
+.flying-lap-empty { display: flex; align-items: center; justify-content: center; height: 100%; text-align: center; color: var(--text-sub); font-size: 11px; }
+.flying-driver-info { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.flying-lap-header { display: flex; align-items: center; background: rgba(255,255,255,.06); padding: 4px 6px; border-radius: 6px; border-bottom: 2px solid rgba(0,0,0,.5); }
+.flying-position { font-weight: 900; font-size: 12px; padding: 2px 6px; background: #fff; color: #000; border-radius: 3px; margin-right: 7px; }
+.flying-driver-name { display: flex; align-items: baseline; gap: 4px; font-weight: 700; flex-grow: 1; }
+.flying-driver-tla { font-size: 12px; }
+.flying-driver-number { font-size: 10px; opacity: .75; }
+.flying-team-logo { width: 34px; height: 17px; object-fit: contain; margin-right: 6px; }
+.flying-tyre { font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.flying-tyre .tyre-icon { width: 19px; height: 19px; }
+.flying-lap-time-container { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; padding: 5px 2px; }
+.flying-lap-time { font-family: 'JetBrains Mono', monospace; font-size: 28px; font-weight: 800; line-height: 1; display: flex; align-items: center; transition: all .2s ease-in-out; }
+.flying-lap-time-animated { animation: flying-flash-grow .5s ease-in-out alternate 2; }
+@keyframes flying-flash-grow { from { transform: scale(1); opacity: .8; color: #fff; } to { transform: scale(1.1); opacity: 1; color: #f2e205; } }
+.flying-lap-diff { font-family: 'JetBrains Mono', monospace; font-size: 10px; margin-left: 5px; padding: 3px 5px; border-radius: 4px; animation: flying-fade-in .5s ease-in-out; }
+@keyframes flying-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.flying-diff-positive { background: #f95a55; color: #fff; }
+.flying-diff-negative { background: #00f500; color: #000; }
+.flying-target-time { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.1; opacity: .9; background: rgba(255,255,255,.06); padding: 4px 6px; border-radius: 5px; font-size: 10px; }
+.flying-target-driver { display: flex; align-items: baseline; gap: 4px; font-weight: 700; }
+.flying-target-value { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+.flying-sectors { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: auto; }
+.flying-sector-bar { background: rgba(0,0,0,.28); border-radius: 4px; padding: 5px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.flying-sector-details { display: flex; justify-content: space-between; align-items: baseline; gap: 3px; font-size: 9px; }
+.flying-sector-label { font-weight: 700; opacity: .7; }
+.flying-sector-time { font-family: 'JetBrains Mono', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.flying-minisectors-track { width: 100%; background: #333; border-radius: 2px; height: 6px; overflow: hidden; display: flex; }
+.flying-minisector { flex: 1; height: 100%; background: #555; }
+.flying-minisector-set { background: #f2e205; }
+.flying-minisector-stopped { background: #333; }
+.flying-minisector-pb { background: #00f500; }
+.flying-minisector-ob { background: #b300b3; }
+.flying-minisector-pit { background: #2196f3; }
+
+/* ============================================================
+   7. WEATHER & RACE CONTROL
+   ============================================================ */
+.weather-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.weather-tile {
+  background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border);
+  border-radius: 8px; padding: 8px; text-align: center;
+}
+.weather-val { font-size: 18px; font-weight: 800; font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
+.weather-lbl { font-size: 9.5px; text-transform: uppercase; color: var(--text-dim); letter-spacing: .5px; }
+.compass { width: 34px; height: 34px; margin: 4px auto 0; position: relative; border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; }
+.compass .needle { position: absolute; left: 50%; top: 50%; width: 2px; height: 14px; background: var(--f1-cyan); transform-origin: bottom center; margin-left: -1px; margin-top: -14px; transition: transform 0.3s; }
+
+.rc-ticker-item {
+  display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px;
+  background: rgba(255,255,255,0.025); border: 1px solid var(--glass-border);
+  border-radius: 6px; font-size: 11px; margin-bottom: 5px;
+}
+.flag-badge {
+  font-size: 8.5px; font-weight: 800; padding: 2px 5px; border-radius: 3px;
+  text-transform: uppercase; flex-shrink: 0; margin-top: 1px;
+}
+
+/* ============================================================
+   macOS FLOATING LIQUID GLASS DOCK
+   ============================================================ */
+.macos-dock-wrapper {
+  position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
+  z-index: 999; display: flex; align-items: center;
+}
+.macos-dock {
+  display: flex; align-items: center; gap: 6px; padding: 6px 12px;
+  background: rgba(18, 22, 34, 0.68);
+  backdrop-filter: blur(34px) saturate(220%);
+  -webkit-backdrop-filter: blur(34px) saturate(220%);
+  border: 1px solid var(--glass-border-bright);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6), var(--glass-specular);
+  border-radius: 22px;
+  max-width: 95vw; overflow-x: auto; scrollbar-width: none;
+}
+.macos-dock::-webkit-scrollbar { display: none; }
+.dock-item {
+  width: 40px; height: 40px; flex-shrink: 0; border-radius: 12px; border: none;
+  background: rgba(255, 255, 255, 0.05); color: var(--text-main);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  cursor: pointer; position: relative; transition: all .2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.dock-item:hover {
+  transform: translateY(-5px) scale(1.12);
+  background: rgba(255, 255, 255, 0.12);
+}
+.dock-item svg { width: 19px; height: 19px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.dock-item.active::after {
+  content: ''; position: absolute; bottom: 3px; width: 4px; height: 4px;
+  border-radius: 50%; background: #fff; box-shadow: 0 0 6px #fff;
+}
+.dock-divider { width: 1px; height: 26px; background: rgba(255,255,255,0.12); margin: 0 4px; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<div id="desktop">
+  <!-- macOS Top Menu Bar -->
+  <header class="macos-menubar">
+    <div class="menu-left">
+      <div class="f1-apple-logo">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+        <span>PITWALL</span>
+      </div>
+      <div class="session-pill" id="sessionName">Connecting…</div>
+      <div class="status-badge">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">LIVE FEED</span>
+      </div>
+    </div>
+
+    <div class="menu-center">
+      <div class="tele-item"><span id="wxIcon">☀️</span> Air <b id="wAir">—°</b><span class="unit">C</span></div>
+      <div class="tele-item">Trk <b id="wTrack">—°</b><span class="unit">C</span></div>
+      <div class="tele-item">Rain <b id="wRain">0%</b></div>
+      <div class="tele-item">Lap <b id="wLap">—/—</b></div>
+      <div class="clock-item" id="wClock">--:--:--</div>
+    </div>
+
+    <div class="menu-right">
+      <div class="feed-indicators">
+        <div class="feed-tag"><span class="dot off" id="dotMain"></span> PITWALL</div>
+        <div class="feed-tag"><span class="dot off" id="dotRadio"></span> COMMS</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Workspace with GridStack -->
+  <div class="workspace-wrapper">
+    <div class="grid-stack" id="gridStack">
+
+      <!-- 1. Timing Tower -->
+      <div class="grid-stack-item" gs-id="widget-timing" gs-x="0" gs-y="0" gs-w="3" gs-h="8">
+        <div class="grid-stack-item-content">
+          <div class="mac-titlebar">
+            <div class="traffic-lights"><button class="traffic-btn traffic-close" onclick="removeWidget('widget-timing')"></button></div>
+            <div class="mac-title">Timing Tower</div>
+            <div class="mac-actions">
+              <span id="timingModeIndicator">RACE</span>
+              <button class="timing-settings-btn" id="timingSettingsBtn" title="Timing tower settings">⚙</button>
+              <div class="timing-settings-pop" id="timingSettingsPop">
+                <div class="timing-settings-title">Columns</div>
+                <div class="timing-settings-row"><span>Driver number</span><button class="timing-toggle on" data-timing-key="showNumber"></button></div>
+                <div class="timing-settings-row"><span>Tyre compound</span><button class="timing-toggle on" data-timing-key="showTire"></button></div>
+                <div class="timing-settings-row"><span>Best lap</span><button class="timing-toggle on" data-timing-key="showBest"></button></div>
+                <div class="timing-settings-row"><span>Last lap</span><button class="timing-toggle on" data-timing-key="showLast"></button></div>
+                <div class="timing-settings-row"><span>Gap to leader</span><button class="timing-toggle on" data-timing-key="showGap"></button></div>
+                <div class="timing-settings-row"><span>Interval</span><button class="timing-toggle on" data-timing-key="showInterval"></button></div>
+                <div class="timing-settings-row"><span>Pit stops</span><button class="timing-toggle on" data-timing-key="showPitstopCount"></button></div>
+                <div class="timing-settings-title">Sectors</div>
+                <div class="timing-settings-row"><span>Best sectors</span><button class="timing-toggle on" data-timing-key="showBestSectors"></button></div>
+                <div class="timing-settings-row"><span>Last sectors</span><button class="timing-toggle on" data-timing-key="showLastSectors"></button></div>
+                <div class="timing-settings-row"><span>Minisectors</span><button class="timing-toggle on" data-timing-key="showMinisectors"></button></div>
+                <div class="timing-settings-row"><span>Font size</span><input type="range" id="timingFontSlider" min="70" max="130" step="5" value="100" style="width:92px;accent-color:var(--f1-accent);"></div>
+              </div>
+            </div>
+          </div>
+          <div class="timing-status-banner" id="timingStatusBanner">TRACK STATUS UNKNOWN</div>
+          <div class="mac-window-body" style="padding:0;">
+            <table class="glass-table" id="timingTable">
+              <thead>
+                <tr id="timingTableHead">
+                  <th>Pos</th><th>#</th><th></th><th></th><th>Best</th><th>Last</th><th>Gap</th><th>Int</th><th>Pits</th><th>P+-</th>
+                </tr>
+              </thead>
+              <tbody id="timingTableBody">
+                <tr><td colspan="10" class="empty-hint">Waiting for live timing…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Battle Widget -->
+      <div class="grid-stack-item" gs-id="widget-battle" gs-x="0" gs-y="16" gs-w="3" gs-h="4">
+        <div class="grid-stack-item-content">
+          <div class="mac-titlebar">
+            <div class="traffic-lights"><button class="traffic-btn traffic-close" onclick="removeWidget('widget-battle')"></button></div>
+            <div class="mac-title">Battle Widget</div>
+            <div class="mac-actions">
+              <button class="battle-settings-btn" id="battleSettingsBtn" title="Battle settings">⚙</button>
+              <div class="battle-settings-pop" id="battleSettingsPop">
+                <div class="battle-settings-title">Battle settings</div>
+                <div class="battle-settings-row"><span>Selected battle</span><select class="battle-settings-select" id="battleSettingSelect"><option value="">Auto closest</option></select></div>
+                <div class="battle-settings-row"><span>Gap threshold</span><input class="battle-settings-slider" id="battleThresholdSlider" type="range" min="0.5" max="5" step="0.1" value="1.5"></div>
+                <div class="battle-settings-row"><span>Font size</span><input class="battle-settings-slider" id="battleFontSlider" type="range" min="70" max="140" step="5" value="100"></div>
+                <div class="battle-settings-row"><span>Auto select closest</span><input class="battle-settings-check" id="battleAutoCheck" type="checkbox" checked></div>
+              </div>
+            </div>
+          </div>
+          <div class="mac-window-body" id="battleBody" style="padding:0;">
+            <div class="battle-empty-prompt">No close battles on track at the moment.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Flying Lap -->
+      <div class="grid-stack-item" gs-id="widget-flying-lap" gs-x="3" gs-y="16" gs-w="3" gs-h="4">
+        <div class="grid-stack-item-content">
+          <div class="mac-titlebar">
+            <div class="traffic-lights"><button class="traffic-btn traffic-close" onclick="removeWidget('widget-flying-lap')"></button></div>
+            <div class="mac-title">Flying Lap</div>
+            <div class="mac-actions">
+              <button class="battle-settings-btn" id="flyingSettingsBtn" title="Flying lap settings">⚙</button>
+              <div class="battle-settings-pop" id="flyingSettingsPop">
+                <div class="battle-settings-title">Flying lap settings</div>
+                <div class="battle-settings-row"><span>Driver</span><select class="battle-settings-select" id="flyingDriverSelect"><option value="">Auto select</option></select></div>
+                <div class="battle-settings-row"><span>Auto select</span><input class="battle-settings-check" id="flyingAutoCheck" type="checkbox" checked></div>
+                <div class="battle-settings-row"><span>Font size</span><input class="battle-settings-slider" id="flyingFontSlider" type="range" min="70" max="150" step="5" value="100"></div>
+              </div>
+            </div>
+          </div>
+          <div class="mac-window-body" id="flyingLapBody" style="padding:0;">
+            <div class="flying-lap-empty">Flying Lap is available during Practice and Qualifying.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Circuit Map -->
+      <div class="grid-stack-item" gs-id="widget-track" gs-x="3" gs-y="0" gs-w="6" gs-h="5">
+        <div class="grid-stack-item-content">
+          <div class="mac-titlebar">
+            <div class="traffic-lights"><button class="traffic-btn traffic-close" onclick="removeWidget('widget-track')"></button></div>
+            <div class="mac-title">Circuit Map & GPS</div>
+            <div class="mac-actions">PAN / ZOOM ACTIVE</div>
+          </div>
+          <div class="mac-window-body" style="padding:0; overflow:hidden;">
+            <div class="map-canvas-container" id="mapContainer">
+              <!-- Floating Pan/Zoom/Relocate Camera Controls -->
+              <div class="map-controls-floating">
+                <button class="map-ctrl-btn" onclick="zoomMap(1.25)" title="Zoom In">+</button>
+                <button class="map-ctrl-btn" onclick="zoomMap(0.8)" title="Zoom Out">−</button>
+                <button class="map-ctrl-btn" onclick="resetMapCamera()" title="Reset/Relocate Map">⟲ Fit</button>
+                <button class="map-ctrl-btn" id="btnFocusDriver" onclick="toggleFollowDriver()" title="Follow Selected Car">📍 Focus</button>
+                <button class="map-ctrl-btn active" id="btnToggleCorners" onclick="toggleCornerNumbers()">Corners</button>
+                <button class="map-ctrl-btn active" id="btnToggleWeather" onclick="toggleMapWeather()">WX</button>
+              </div>
+
+              <!-- Weather Overlays on Map Corners -->
+              <div class="map-weather-overlay map-weather--top-left" id="mapWeatherOverlay">
+                <div class="weather-item">
+                  <span class="wind-arrow" id="mapWindArrow">↑</span>
+                  <span id="mapWindVal">0 kph</span>
+                </div>
+                <div class="weather-item"><span style="color:var(--text-dim)">Trk</span> <b id="mapTrackTempVal">—°C</b></div>
+                <div class="weather-item"><span style="color:var(--text-dim)">Rain</span> <b id="mapRainVal">0%</b></div>
+              </div>
+
+              <!-- SVG Track Map -->
+              <svg id="trackSvg" class="track-map-svg" viewBox="0 0 1000 1000" onclick="handleMapBackgroundClick(event)">
+                <defs>
+                  <pattern id="checkeredPattern" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+                    <rect x="0" y="0" width="20" height="20" fill="white" />
+                    <rect x="20" y="20" width="20" height="20" fill="white" />
+                    <rect x="20" y="0" width="20" height="20" fill="black" />
+                    <rect x="0" y="20" width="20" height="20" fill="black" />
+                  </pattern>
+                </defs>
+                <g id="mapTransformGroup">
+                  <path id="svgTrackOutline" class="track-outline" stroke-width="260" stroke-linejoin="round" fill="none" d=""/>
+                  <rect id="svgFinishLine" width="550" height="180" fill="url(#checkeredPattern)" style="display:none;"/>
+                  <g id="svgCornersGroup"></g>
+                  <g id="svgCarsGroup"></g>
+                </g>
+              </svg>
+              <!-- Map Selection Strips -->
+              <div class="map-selection-strip" id="mapSelectionStrip" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Telemetry Cockpit -->
+      <div class="grid-stack-item" gs-id="widget-telemetry" gs-x="9" gs-y="0" gs-w="3" gs-h="5">
+        <div class="grid-stack-item-content">
+          <div class="mac-titlebar">
+            <div class="traffic-lights"><button class="traffic-btn traffic-close" onclick="removeWidget('widget-telemetry')"></button></div>
+            <div class="mac-title">Cockpit Telemetry</div>
+          </div>
+          <div class="mac-window-body" id="telemetryBody">
+            <div class="empty-hint">Select a driver on the tower or map</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Tyre Strategy -->
+      <div class="grid-stack-item" gs-id="widget-tyres" gs-x="3" gs-y="5" gs-w="3" gs-h="4">
+        <div class="grid-stack-item-content">
+          <div class="mac-titlebar">
+            <div class="traffic-lights"><button class="traffic-btn traffic-close" onclick="removeWidget('widget-tyres')"></button></div>
+            <div class="mac-title">Tyre Strategy</div>
+          </div>
+          <div class="mac-window-body" style="padding:4px;">
+            <div class="driver-list-timeline" id="tyreDriverTimeline">
+              <div class="empty-hint">Waiting for stint data…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. Team Radio -->
+      <div class="grid-stack-item" gs-id="widget-radio" gs-x="9" gs-y="5" gs-w="3" gs-h="4">
+        <div class="grid-stack-item-content">
+          <div class="mac-titlebar">
+            <div class="traffic-lights"><button class="traffic-btn traffic-close" onclick="removeWidget('widget-radio')"></button></div>
+            <div class="mac-title">Team Radio Feed</div>
+          </div>
+          <div class="mac-window-body">
+            <div class="radio-filter-wrap">
+              <select class="radio-select" id="radioFilter"><option value="">All Drivers Comms</option></select>
+            </div>
+            <div class="radio-feed-list" id="radioList">
+              <div class="empty-hint">Waiting for team radio comms…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 7. Sector Timing -->
+      <div class="grid-stack-item" gs-id="widget-sectors" gs-x="0" gs-y="8" gs-w="3" gs-h="4">
+        <div class="grid-stack-item-content">
+          <div class="mac-titlebar">
+            <div class="traffic-lights"><button class="traffic-btn traffic-close" onclick="removeWidget('widget-sectors')"></button></div>
+            <div class="mac-title">Sector Timing</div>
+          </div>
+          <div class="mac-window-body" style="padding:0;">
+            <table class="glass-table">
+              <thead><tr><th>#</th><th>Driver</th><th>S1</th><th>S2</th><th>S3</th></tr></thead>
+              <tbody id="sectorsTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 8. Speed Trap -->
+      <div class="grid-stack-item" gs-id="widget-speed" gs-x="3" gs-y="9" gs-w="3" gs-h="4">
+        <div class="grid-stack-item-content">
+          <div class="mac-titlebar">
+            <div class="traffic-lights"><button class="traffic-btn traffic-close" onclick="removeWidget('widget-speed')"></button></div>
+            <div class="mac-title">Speed Trap</div>
+          </div>
+          <div class="mac-window-body" style="padding:0;">
+            <table class="glass-table">
+              <thead><tr><th>#</th><th>Driver</th><th>I1</th><th>I2</th><th>FL</th><th>ST</th></tr></thead>
+              <tbody id="speedTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 9. Position Delta -->
+      <div class="grid-stack-item" gs-id="widget-position" gs-x="6" gs-y="9" gs-w="3" gs-h="4">
+        <div class="grid-stack-item-content">
+          <div class="mac-titlebar">
+            <div class="traffic-lights"><button class="traffic-btn traffic-close" onclick="removeWidget('widget-position')"></button></div>
+            <div class="mac-title">Position Delta</div>
+          </div>
+          <div class="mac-window-body" style="padding:0;">
+            <table class="glass-table">
+              <thead><tr><th>Pos</th><th>Driver</th><th>Start</th><th>Delta</th></tr></thead>
+              <tbody id="positionTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 10. Pitstops -->
+      <div class="grid-stack-item" gs-id="widget-pitstops" gs-x="9" gs-y="9" gs-w="3" gs-h="4">
+        <div class="grid-stack-item-content">
+          <div class="mac-titlebar">
+            <div class="traffic-lights"><button class="traffic-btn traffic-close" onclick="removeWidget('widget-pitstops')"></button></div>
+            <div class="mac-title">Pitstops</div>
+          </div>
+          <div class="mac-window-body" style="padding:0;">
+            <table class="glass-table">
+              <thead><tr><th>Pos</th><th>Driver</th><th>Stops</th><th>Current Stint</th></tr></thead>
+              <tbody id="pitstopsTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 11. Weather -->
+      <div class="grid-stack-item" gs-id="widget-weather" gs-x="0" gs-y="12" gs-w="6" gs-h="3">
+        <div class="grid-stack-item-content">
+          <div class="mac-titlebar">
+            <div class="traffic-lights"><button class="traffic-btn traffic-close" onclick="removeWidget('widget-weather')"></button></div>
+            <div class="mac-title">Weather</div>
+          </div>
+          <div class="mac-window-body">
+            <div id="weatherWrap"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 12. Race Control -->
+      <div class="grid-stack-item" gs-id="widget-rc" gs-x="6" gs-y="13" gs-w="6" gs-h="3">
+        <div class="grid-stack-item-content">
+          <div class="mac-titlebar">
+            <div class="traffic-lights"><button class="traffic-btn traffic-close" onclick="removeWidget('widget-rc')"></button></div>
+            <div class="mac-title">Race Control</div>
+          </div>
+          <div class="mac-window-body">
+            <div id="rcList"><div class="empty-hint">No Race Control messages yet.</div></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- macOS Floating Liquid Glass Dock (ALL 12 WIDGETS) -->
+  <div class="macos-dock-wrapper">
+    <div class="macos-dock">
+      <button class="dock-item active" title="Timing Tower" onclick="toggleWidget('widget-timing')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V3m0 1h13l-3 4 3 4H5"/><path d="M8 6h2v2H8zm4 0h2v2h-2zm-4 4h2v2H8zm4 0h2v2h-2z"/></svg></button>
+      <button class="dock-item active" title="Battle Widget" onclick="toggleWidget('widget-battle')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 15 2-5h9l3 5v3H3zM14 10l2-3h3l2 3M6 18v2m8-2v2m3-4h4"/><circle cx="7" cy="16" r="1"/><circle cx="14" cy="16" r="1"/></svg></button>
+      <button class="dock-item active" title="Flying Lap" onclick="toggleWidget('widget-flying-lap')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 15 3-4h9l4 4v3H3zM8 11l2-4h5l3 4M7 18v2m9-2v2M2 7h4M1 10h3"/></svg></button>
+      <button class="dock-item active" title="Circuit Map" onclick="toggleWidget('widget-track')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H5a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h2a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h5a2 2 0 0 0 2-2v-2a2 2 0 0 1 2-2h1"/><path d="M13 4h6v5h-6z"/></svg></button>
+      <button class="dock-item active" title="Telemetry Cockpit" onclick="toggleWidget('widget-telemetry')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17a9 9 0 1 1 18 0M12 12l5-4M5 17h14"/><circle cx="12" cy="17" r="1"/></svg></button>
+      <button class="dock-item active" title="Team Radio" onclick="toggleWidget('widget-radio')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13v-2a8 8 0 0 1 16 0v2M4 13h3v6H6a2 2 0 0 1-2-2zm16 0h-3v6h1a2 2 0 0 0 2-2zM17 19a5 5 0 0 1-5 3h-2"/></svg></button>
+      <button class="dock-item active" title="Tyre Strategy" onclick="toggleWidget('widget-tyres')"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v5m0 8v5M3 12h5m8 0h5M5.6 5.6l3.5 3.5m5.8 5.8 3.5 3.5m0-12.8-3.5 3.5m-5.8 5.8-3.5 3.5"/></svg></button>
+      <button class="dock-item active" title="Sector Timing" onclick="toggleWidget('widget-sectors')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v4H4zm0 5h16v4H4zm0 5h16v4H4z"/><path d="M8 7h.01M8 12h.01M8 17h.01"/></svg></button>
+      <button class="dock-item active" title="Speed Trap" onclick="toggleWidget('widget-speed')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18a9 9 0 1 1 16 0M12 13l5-5M7 18h10"/><path d="M5 7 3 5m16 2 2-2"/></svg></button>
+      <button class="dock-item active" title="Position Delta" onclick="toggleWidget('widget-position')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19h18M5 19v-5h4v5m3 0V7h4v12m3 0v-9h2v9"/><path d="m11 5 2-2 2 2"/></svg></button>
+      <button class="dock-item active" title="Pitstops" onclick="toggleWidget('widget-pitstops')"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="16" r="5"/><circle cx="8" cy="16" r="2"/><path d="m14 5 5 5m-2-7 4 4-3 3-4-4zM4 16h2m4 0h2"/></svg></button>
+      <button class="dock-item active" title="Weather" onclick="toggleWidget('widget-weather')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9a4.5 4.5 0 0 0 1 9zM8 21l-1 2m6-2-1 2m6-2-1 2"/><path d="M17 3v2m4 1-1.5 1.5"/></svg></button>
+      <button class="dock-item active" title="Race Control" onclick="toggleWidget('widget-rc')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V3m0 1h13l-3 4 3 4H5"/><path d="M8 6h2v2H8zm4 0h2v2h-2zm-4 4h2v2H8zm4 0h2v2h-2z"/><path d="m16 17 2 2 4-5"/></svg></button>
+      <div class="dock-divider"></div>
+      <button class="dock-item" id="lockGridBtn" title="Lock/Unlock Grid" onclick="toggleGridLock()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4"/><path d="M12 15v2"/></svg></button>
+      <button class="dock-item" title="Reset Grid Layout" onclick="resetDefaultGrid()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V3m0 0h5M4 3l4 4a9 9 0 1 1-2 10"/><path d="M12 7v5l3 2"/></svg></button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   GRIDSTACK INITIALIZATION
+   ============================================================ */
+let grid;
+const DEFAULT_LAYOUT = [
+  {id:'widget-timing', x:0, y:0, w:3, h:8},
+  {id:'widget-battle', x:0, y:16, w:3, h:4},
+  {id:'widget-flying-lap', x:3, y:16, w:3, h:4},
+  {id:'widget-track', x:3, y:0, w:6, h:5},
+  {id:'widget-telemetry', x:9, y:0, w:3, h:5},
+  {id:'widget-radio', x:9, y:5, w:3, h:4},
+  {id:'widget-tyres', x:3, y:5, w:3, h:4},
+  {id:'widget-sectors', x:0, y:8, w:3, h:4},
+  {id:'widget-speed', x:3, y:9, w:3, h:4},
+  {id:'widget-position', x:6, y:9, w:3, h:4},
+  {id:'widget-pitstops', x:9, y:9, w:3, h:4},
+  {id:'widget-weather', x:0, y:12, w:6, h:3},
+  {id:'widget-rc', x:6, y:13, w:6, h:3}
+];
+
+document.addEventListener('DOMContentLoaded', () => {
+  grid = GridStack.init({
+    column: 12, cellHeight: 70, margin: 12,
+    animate: true, handle: '.mac-titlebar',
+    draggable: { handle: '.mac-titlebar' },
+    resizable: { handles: 'all' }
+  });
+  setupMapInteraction();
+  resetDefaultGrid();
+});
+
+let isLocked = false;
+function toggleGridLock() {
+  isLocked = !isLocked;
+  grid.setStatic(isLocked);
+  document.getElementById('lockGridBtn').style.color = isLocked ? 'var(--f1-amber)' : 'inherit';
+}
+
+function removeWidget(id) {
+  const el = document.querySelector(`[gs-id="${id}"]`);
+  if (el) { grid.removeWidget(el, false); el.style.display = 'none'; syncDock(); }
+}
+
+function toggleWidget(id) {
+  const el = document.querySelector(`[gs-id="${id}"]`);
+  if (!el) return;
+  if (el.style.display === 'none') { el.style.display = ''; grid.addWidget(el); }
+  else removeWidget(id);
+  syncDock();
+}
+
+function syncDock() {
+  document.querySelectorAll('.dock-item[onclick^="toggleWidget"]').forEach(btn => {
+    const match = btn.getAttribute('onclick').match(/'([^']+)'/);
+    if (!match) return;
+    const el = document.querySelector(`[gs-id="${match[1]}"]`);
+    if (el && el.style.display !== 'none') btn.classList.add('active');
+    else btn.classList.remove('active');
+  });
+}
+
+function resetDefaultGrid() {
+  DEFAULT_LAYOUT.forEach(item => {
+    const el = document.querySelector(`[gs-id="${item.id}"]`);
+    if (el) { el.style.display = ''; grid.update(el, { x: item.x, y: item.y, w: item.w, h: item.h }); }
+  });
+  syncDock();
+}
+
+/* ============================================================
+   DATA STATE & WEBSOCKET ENGINE (WITH F1PEDIA FALLBACK)
+   ============================================================ */
+const MAIN_WS = "wss://api.pitwall.me/ws";
+const TIMING_WS = "wss://proxy.cloudflare-eggshell171.workers.dev";
+const F1PEDIA_WS = "wss://f1.f1pedia.com/api/v1/live/ws";
+
+let state = {}, carAnim = {}, telemetry = {}, lapHistoryMap = {};
+let dirty = true, wsMain = null, backoffMain = 2000;
+let wsTiming = null, backoffTiming = 2000;
+let wsF1Pedia = null, backoffF1Pedia = 2000;
+let radioSnap = null, wsRadio = null, backoffRadio = 2000, radioDirty = true;
+let circuitKey = null, trackData = null;
+let selectedDriverNumber = null;
+let showCornerNumbers = true, showMapWeather = true;
+
+const DRIVER_ASSETS = {
+  NOR: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYlJ7c43Q3f_Pd_mclaren-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/mclaren/lannor01/2026mclarenlannor01numberwhitefrless.webp" },
+  PIA: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYlJ7c43Q3f_Pd_mclaren-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/mclaren/oscpia01/2026mclarenoscpia01numberwhitefrless.webp" },
+  RUS: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYkZ7c43Q3f_Pa_mercedes-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/mercedes/georus01/2026mercedesgeorus01numberwhitefrless.webp" },
+  ANT: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYkZ7c43Q3f_Pa_mercedes-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/mercedes/andant01/2026mercedesandant01numberwhitefrless.webp" },
+  VER: { teamLogo: "https://images.prismic.io/formula-1-dashboard/aS9MoHNYClf9nuMb_rbr-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/redbullracing/maxver01/2026redbullracingmaxver01numberwhitefrless.webp" },
+  HAD: { teamLogo: "https://images.prismic.io/formula-1-dashboard/aS9MoHNYClf9nuMb_rbr-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/redbullracing/isahad01/2026redbullracingisahad01numberwhitefrless.webp" },
+  LEC: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYjp7c43Q3f_PX_ferrari-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/ferrari/chalec01/2026ferrarichalec01numberwhitefrless.webp" },
+  HAM: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYjp7c43Q3f_PX_ferrari-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/ferrari/lewham01/2026ferrarilewham01numberwhitefrless.webp" },
+  SAI: { teamLogo: "https://images.prismic.io/formula-1-dashboard/aWqvnQIvOtkhBqzz_williams-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/williams/carsai01/2026williamscarsai01numberwhitefrless.webp" },
+  ALB: { teamLogo: "https://images.prismic.io/formula-1-dashboard/aWqvnQIvOtkhBqzz_williams-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/williams/alealb01/2026williamsalealb01numberwhitefrless.webp" },
+  LAW: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYj57c43Q3f_PY_rb-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/racingbulls/lialaw01/2026racingbullslialaw01numberwhitefrless.webp" },
+  LIN: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYj57c43Q3f_PY_rb-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/racingbulls/arvlin01/2026racingbullsarvlin01numberwhitefrless.webp" },
+  ALO: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYlp7c43Q3f_Pf_aston-martin-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/astonmartin/feralo01/2026astonmartinferalo01numberwhitefrless.webp" },
+  STR: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYlp7c43Q3f_Pf_aston-martin-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/astonmartin/lanstr01/2026astonmartinlanstr01numberwhitefrless.webp" },
+  OCO: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYkp7c43Q3f_Pb_haas-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/haasf1team/estoco01/2026haasf1teamestoco01numberwhitefrless.webp" },
+  BEA: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYkp7c43Q3f_Pb_haas-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/haasf1team/olibea01/2026haasf1teamolibea01numberwhitefrless.webp" },
+  GAS: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYkJ7c43Q3f_PZ_alpine-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/alpine/piegas01/2026alpinepiegas01numberwhitefrless.webp" },
+  COL: { teamLogo: "https://images.prismic.io/formula-1-dashboard/Z7ZYkJ7c43Q3f_PZ_alpine-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/alpine/fracol01/2026alpinefracol01numberwhitefrless.webp" },
+  HUL: { teamLogo: "https://images.prismic.io/formula-1-dashboard/aWqm4AIvOtkhBqx5_audi-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/audi/nichul01/2026audinichul01numberwhitefrless.webp" },
+  BOR: { teamLogo: "https://images.prismic.io/formula-1-dashboard/aWqm4AIvOtkhBqx5_audi-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/audi/gabbor01/2026audigabbor01numberwhitefrless.webp" },
+  PER: { teamLogo: "https://images.prismic.io/formula-1-dashboard/aWqongIvOtkhBqyj_cadillac-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/cadillac/serper01/2026cadillacserper01numberwhitefrless.webp" },
+  BOT: { teamLogo: "https://images.prismic.io/formula-1-dashboard/aWqongIvOtkhBqyj_cadillac-normalized-logo.png", numberLogo: "https://media.formula1.com/image/upload/c_fit,w_876,h_742/q_auto/v1740000001/common/f1/2026/cadillac/valbot01/2026cadillacvalbot01numberwhitefrless.webp" }
+};
+
+const DRIVER_PORTRAITS = {
+  NOR: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/mclaren/lannor01/2026mclarenlannor01right.webp",
+  PIA: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/mclaren/oscpia01/2026mclarenoscpia01right.webp",
+  RUS: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/mercedes/georus01/2026mercedesgeorus01right.webp",
+  ANT: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/mercedes/andant01/2026mercedesandant01right.webp",
+  VER: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/redbullracing/maxver01/2026redbullracingmaxver01right.webp",
+  HAD: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/redbullracing/isahad01/2026redbullracingisahad01right.webp",
+  LEC: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/ferrari/chalec01/2026ferrarichalec01right.webp",
+  HAM: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/ferrari/lewham01/2026ferrarilewham01right.webp",
+  SAI: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/williams/carsai01/2026williamscarsai01right.webp",
+  ALB: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/williams/salealb01/2026williamssalealb01right.webp",
+  LAW: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/racingbulls/lialaw01/2026racingbullslialaw01right.webp",
+  LIN: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/racingbulls/arvlin01/2026racingbullsarvlin01right.webp",
+  ALO: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/astonmartin/feralo01/2026astonmartinferalo01right.webp",
+  STR: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/astonmartin/lanstr01/2026astonmartinlanstr01right.webp",
+  OCO: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/haasf1team/estoco01/2026haasf1teamestoco01right.webp",
+  BEA: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/haasf1team/olibea01/2026haasf1teamolibea01right.webp",
+  GAS: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/alpine/piegas01/2026alpinepiegas01right.webp",
+  COL: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/alpine/fracol01/2026alpinefracol01right.webp",
+  HUL: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/audi/nichul01/2026audinichul01right.webp",
+  BOR: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/audi/gabbor01/2026audigabbor01right.webp",
+  PER: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/cadillac/serper01/2026cadillacserper01right.webp",
+  BOT: "https://media.formula1.com/image/upload/c_fill,w_1000,h_1000,g_north/q_auto:best/d_common:f1:2026:fallback:driver:2026fallbackdriverright.webp/v1740000001/common/f1/2026/cadillac/valbot01/2026cadillacvalbot01right.webp"
+};
+function portraitUrl(tla){ return (tla && DRIVER_PORTRAITS[tla]) || ''; }
+function driverBadgeMarkup(tla, racingNumber) {
+  const assets = DRIVER_ASSETS[tla];
+  if (!assets) return `<span class="driver-visual"><span class="driver-number-fallback">${racingNumber}</span></span>`;
+  return `<span class="driver-visual" title="${tla} #${racingNumber}">
+    <span class="driver-number-fallback" hidden>${racingNumber}</span>
+    <img class="driver-number-art" src="${assets.numberLogo}" alt="${tla} ${racingNumber}" onerror="this.hidden=true;this.previousElementSibling.hidden=false">
+  </span>`;
+}
+function teamLogoMarkup(tla) {
+  const teamLogo = DRIVER_ASSETS[tla]?.teamLogo;
+  return teamLogo ? `<img class="driver-team-only-logo" src="${teamLogo}" alt="" onerror="this.remove()">` : '';
+}
+function driverIdentityMarkup(tla, racingNumber, color) {
+  return `<span class="driver-identity">${teamLogoMarkup(tla)}<span class="driver-identity-name" style="color:${color || 'inherit'}">${tla || racingNumber}</span></span>`;
+}
+
+const TYRE_STYLES = {
+  SOFT: { color: '#FF0000', code: 'S', image: 'images/tires/soft.svg', cls: 'tyre-soft' },
+  MEDIUM: { color: '#FFFF00', code: 'M', image: 'images/tires/medium.svg', cls: 'tyre-medium' },
+  HARD: { color: '#FFFFFF', code: 'H', image: 'images/tires/hard.svg', cls: 'tyre-hard' },
+  INTERMEDIATE: { color: '#00FF00', code: 'I', image: 'images/tires/intermediate.svg', cls: 'tyre-intermediate' },
+  WET: { color: '#0000FF', code: 'W', image: 'images/tires/wet.svg', cls: 'tyre-wet' }
+};
+
+function tyreIconMarkup(style) {
+  return `<img class="tyre-icon" src="${style.image || 'images/tires/unknown.svg'}" alt="${style.code}">`;
+}
+
+function deepMerge(base, patch){
+  if (typeof base !== 'object' || base === null || typeof patch !== 'object' || patch === null) return patch;
+  const r = Array.isArray(base) ? base.slice() : Object.assign({}, base);
+  for (const k in patch){ r[k] = (base[k] && typeof patch[k]==='object') ? deepMerge(base[k], patch[k]) : patch[k]; }
+  return r;
+}
+function setDot(id, mode){ document.getElementById(id).className = 'dot ' + (mode==='live'?'live':mode==='off'?'off':''); }
+
+/* ============================================================
+   PITWALL WEBSOCKET ENGINE
+   ============================================================ */
+function connectMain(){
+  setDot('dotMain','connecting');
+  try{ wsMain = new WebSocket(MAIN_WS); wsMain.binaryType = 'arraybuffer'; }catch(e){ scheduleMain(); return; }
+  wsMain.onopen = () => { setDot('dotMain','live'); backoffMain = 2000; };
+  wsMain.onmessage = (evt) => {
+    try{
+      const raw = (evt.data instanceof ArrayBuffer) ? new TextDecoder().decode(pako.inflate(new Uint8Array(evt.data))) : evt.data;
+      const obj = JSON.parse(raw);
+      if (obj && obj.type==='bundle' && Array.isArray(obj.messages)) obj.messages.forEach(processMainMsg);
+      else processMainMsg(obj);
+    }catch(e){}
+    dirty = true;
+  };
+  wsMain.onclose = () => { setDot('dotMain','off'); wsMain = null; scheduleMain(); };
+  wsMain.onerror = () => {};
+}
+function scheduleMain(){ setTimeout(connectMain, backoffMain); backoffMain = Math.min(backoffMain*1.6, 20000); }
+
+function applyTimingFeed(key, value){
+  if (key !== 'TimingData' && key !== 'TopThree') return;
+  state[key] = deepMerge(state[key] || {}, value);
+  dirty = true;
+}
+
+function processTimingMessage(msg){
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.type === 3 && msg.result){
+    for (const key of ['TimingData', 'TopThree']){
+      if (msg.result[key]) applyTimingFeed(key, msg.result[key]);
+    }
+    return;
+  }
+  if (msg.type === 1 && msg.target === 'feed' && Array.isArray(msg.arguments)){
+    applyTimingFeed(msg.arguments[0], msg.arguments[1]);
+    return;
+  }
+  if (Array.isArray(msg.M)){
+    msg.M.forEach(entry=>{
+      if (entry && entry.M === 'feed' && Array.isArray(entry.A)) applyTimingFeed(entry.A[0], entry.A[1]);
+    });
+  }
+}
+
+function connectTiming(){
+  try{ wsTiming = new WebSocket(TIMING_WS); }catch(e){ scheduleTiming(); return; }
+  wsTiming.onopen = () => {
+    backoffTiming = 2000;
+    wsTiming.send(JSON.stringify({ protocol: 'json', version: 1 }) + '\u001e');
+    wsTiming.send(JSON.stringify({
+      type: 1, target: 'Subscribe',
+      arguments: [['TimingData', 'TopThree']], invocationId: 'timing-only'
+    }) + '\u001e');
+  };
+  wsTiming.onmessage = event => {
+    String(event.data).split('\u001e').forEach(frame=>{
+      if (!frame) return;
+      try{ processTimingMessage(JSON.parse(frame)); }catch(e){}
+    });
+  };
+  wsTiming.onclose = () => { wsTiming = null; scheduleTiming(); };
+  wsTiming.onerror = () => {};
+}
+function scheduleTiming(){ setTimeout(connectTiming, backoffTiming); backoffTiming = Math.min(backoffTiming * 1.6, 20000); }
+
+/* ============================================================
+   F1PEDIA FALLBACK WEBSOCKET ENGINE
+   ============================================================ */
+async function decodeF1Pedia(d){
+  if(typeof d==='string')return d;
+  const u=new Uint8Array(d),t=new TextDecoder().decode(u);
+  if(t.trimStart()[0]==='{')return t;
+  for(const f of ['gzip','deflate','deflate-raw']){
+    try{return await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream(f))).text()}catch(e){}
+  }
+  throw new Error('undecodable');
+}
+
+function updateF1PediaPos(p){
+  if(typeof p?.x!=='number'||typeof p?.y!=='number')return;
+  const n=p.driver_number,t=Date.parse(p.date||'');
+  const now = Number.isFinite(t) ? t : performance.now();
+  const prev = carAnim[n];
+  if(!prev){ carAnim[n] = {sx:p.x, sy:p.y, tx:p.x, ty:p.y, st:performance.now(), dur:300}; return; }
+  const elapsed = performance.now() - prev.st;
+  const prog = Math.min(1, elapsed / prev.dur);
+  const cx = prev.sx + (prev.tx - prev.sx) * prog;
+  const cy = prev.sy + (prev.ty - prev.sy) * prog;
+  carAnim[n] = {sx:cx, sy:cy, tx:p.x, ty:p.y, st:performance.now(), dur:300};
+}
+
+function connectF1Pedia(){
+  try{ wsF1Pedia = new WebSocket(F1PEDIA_WS); }catch(e){ scheduleF1Pedia(); return; }
+  wsF1Pedia.binaryType = 'arraybuffer';
+  wsF1Pedia.onopen = () => { backoffF1Pedia = 2000; };
+  wsF1Pedia.onmessage = async (e) => {
+    let m;
+    try{ m = JSON.parse(await decodeF1Pedia(e.data)); }catch(err){ return; }
+    if((m.type==='bootstrap'||m.type==='snapshot')&&m.snapshot){
+      const s = m.snapshot;
+      if (s.drivers) {
+        if (!state.DriverList) state.DriverList = {};
+        s.drivers.forEach(d => {
+          state.DriverList[d.driver_number] = {
+            Tla: d.name_acronym,
+            TeamColour: d.team_colour,
+            LastName: d.last_name
+          };
+        });
+      }
+      if (s.car_data_by_driver) {
+        for (const num in s.car_data_by_driver) {
+          const c = s.car_data_by_driver[num];
+          telemetry[num] = {
+            rpm: c.rpm, speed: c.speed, gear: c.gear,
+            throttle: c.throttle ?? 0, brake: c.brake ?? 0, drs: c.drs,
+            aero: c.aero, overtake: c.overtake
+          };
+        }
+      }
+      if (Array.isArray(s.driver_positions)) s.driver_positions.forEach(updateF1PediaPos);
+      dirty = true;
+    }
+  };
+  wsF1Pedia.onclose = () => { wsF1Pedia = null; scheduleF1Pedia(); };
+  wsF1Pedia.onerror = () => {};
+}
+function scheduleF1Pedia(){ setTimeout(connectF1Pedia, backoffF1Pedia); backoffF1Pedia = Math.min(backoffF1Pedia * 1.6, 20000); }
+
+function processMainMsg(msg){
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.R && typeof msg.R === 'object'){ applyMainInitial(msg.R); return; }
+  if (Array.isArray(msg.M)){
+    msg.M.forEach(entry => {
+      if (entry && entry.H==='Streaming' && entry.M==='feed' && Array.isArray(entry.A) && entry.A.length>=2) applyMainFeed(entry.A[0], entry.A[1]);
+    });
+    return;
+  }
+  if (Array.isArray(msg) && msg.length>=2 && typeof msg[0]==='string') applyMainFeed(msg[0], msg[1]);
+}
+function applyMainInitial(initial){
+  for (const k in initial){
+    if (k.slice(-2)==='.z'){ routeCompressed(k, initial[k]); continue; }
+    if (k==='LapHistory'){ applyLapHistory(initial[k]); continue; }
+    state[k] = deepMerge(state[k] || {}, initial[k]);
+  }
+  if (initial.SessionInfo) trackSessionKey(initial.SessionInfo);
+  if (state.ExtrapolatedClock) captureClock(state.ExtrapolatedClock);
+}
+function applyMainFeed(key, value){
+  if (key.slice(-2)==='.z'){ routeCompressed(key, value); return; }
+  if (key==='LapHistory'){ applyLapHistory(value); return; }
+  state[key] = deepMerge(state[key] || {}, value);
+  if (key==='SessionInfo') trackSessionKey(value);
+  if (key==='ExtrapolatedClock') captureClock(state[key]);
+}
+function applyLapHistory(payload){
+  if (!payload || !payload.RacingNumber || !payload.CompletedLap) return;
+  const num = payload.RacingNumber;
+  if (!lapHistoryMap[num]) lapHistoryMap[num] = [];
+  lapHistoryMap[num].push(payload.CompletedLap);
+  dirty = true;
+  if (selectedDriverNumber === num) dirty = true;
+}
+
+let clockBase = null;
+function parseClockStr(s){
+  if (!s || typeof s !== 'string') return null;
+  const parts = s.split(':').map(Number);
+  if (!parts.length || parts.some(isNaN)) return null;
+  if (parts.length===3) return (parts[0]*3600 + parts[1]*60 + parts[2]) * 1000;
+  if (parts.length===2) return (parts[0]*60 + parts[1]) * 1000;
+  return parts[0] * 1000;
+}
+function captureClock(c){
+  const ms = parseClockStr(c && c.Remaining);
+  if (ms===null) return;
+  clockBase = { ms, at: performance.now(), extrapolating: !!(c && c.Extrapolating) };
+}
+function fmtClock(ms){
+  if (ms < 0) ms = 0;
+  const totalSec = Math.floor(ms/1000);
+  const h = Math.floor(totalSec/3600), m = Math.floor((totalSec%3600)/60), s = totalSec%60;
+  return (h>0 ? String(h).padStart(2,'0')+':' : '') + String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+}
+function renderClock(){
+  const el = document.getElementById('wClock');
+  if (!clockBase){ el.textContent = '--:--:--'; return; }
+  const elapsed = clockBase.extrapolating ? (performance.now() - clockBase.at) : 0;
+  el.textContent = fmtClock(clockBase.ms - elapsed);
+}
+
+function routeCompressed(key, blob){
+  if (key.indexOf('Position')===0) decodePositionBlob(blob);
+  else if (key.indexOf('CarData')===0) decodeCarDataBlob(blob);
+}
+function trackSessionKey(info){
+  const circuit = info && info.Meeting && info.Meeting.Circuit;
+  const key = circuit && circuit.Key;
+  if (key && key !== circuitKey){ circuitKey = key; loadCircuitMap(key); }
+}
+function inflateBlob(b64){
+  const bin = atob(b64), bytes = new Uint8Array(bin.length);
+  for (let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  return JSON.parse(new TextDecoder().decode(pako.inflateRaw(bytes)));
+}
+function decodePositionBlob(b64){
+  if (!b64 || typeof b64 !== 'string') return;
+  try{
+    const parsed = inflateBlob(b64);
+    const frames = parsed && parsed.Position;
+    if (!Array.isArray(frames) || !frames.length) return;
+    const latest = frames[frames.length-1];
+    if (!latest || !latest.Entries) return;
+    const now = performance.now();
+    for (const num in latest.Entries){
+      const e = latest.Entries[num];
+      if (typeof e.X !== 'number' || typeof e.Y !== 'number') continue;
+      const prev = carAnim[num];
+      if (!prev){ carAnim[num] = {sx:e.X, sy:e.Y, tx:e.X, ty:e.Y, st:now, dur:300}; continue; }
+      const t = Math.min(1, (now - prev.st) / prev.dur);
+      const cx = prev.sx + (prev.tx - prev.sx) * t, cy = prev.sy + (prev.ty - prev.sy) * t;
+      carAnim[num] = {sx:cx, sy:cy, tx:e.X, ty:e.Y, st:now, dur: prev._interval ? Math.min(1200, Math.max(180, prev._interval)) : 300, _interval: now - prev.st};
+    }
+  }catch(e){}
+}
+function decodeCarDataBlob(b64){
+  if (!b64 || typeof b64 !== 'string') return;
+  try{
+    const parsed = inflateBlob(b64);
+    const frames = parsed && parsed.Entries;
+    if (!Array.isArray(frames) || !frames.length) return;
+    const latest = frames[frames.length-1];
+    const cars = latest.Cars || {};
+    for (const num in cars){
+      const ch = (cars[num].Channels) || {};
+      telemetry[num] = {
+        rpm: ch['0'], speed: ch['2'], gear: ch['3'],
+        throttle: ch['4'] ?? 0, brake: ch['5'] ?? 0, drs: ch['45'],
+        aero: ch['46'], overtake: ch['47']
+      };
+    }
+  }catch(e){}
+}
+
+/* ============================================================
+   TEAM RADIO WEBSOCKET
+   ============================================================ */
+function connectRadio(){
+  setDot('dotRadio','connecting');
+  try{ wsRadio = new WebSocket(F1PEDIA_WS); }catch(e){ scheduleRadio(); return; }
+  wsRadio.binaryType = 'arraybuffer';
+  wsRadio.onopen = () => { setDot('dotRadio','live'); backoffRadio = 2000; };
+  wsRadio.onmessage = async (e) => {
+    let m;
+    try{ m = JSON.parse(await decodeF1Pedia(e.data)); }catch(err){ return; }
+    if (m.snapshot){ radioSnap = m.snapshot; radioDirty = true; }
+  };
+  wsRadio.onclose = () => { setDot('dotRadio','off'); wsRadio = null; scheduleRadio(); };
+}
+function scheduleRadio(){ setTimeout(connectRadio, backoffRadio); backoffRadio = Math.min(backoffRadio*1.6, 20000); }
+
+/* ============================================================
+   ROBUST VALUE EXTRACTORS & HELPERS
+   ============================================================ */
+function extractValue(val) {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'string' || typeof val === 'number') return String(val);
+  if (typeof val === 'object') {
+    for (const key of ['Value', 'value', 'DisplayValue', 'displayValue', 'Time', 'time']) {
+      if (val[key] !== undefined && val[key] !== null) return extractValue(val[key]);
+    }
+  }
+  return '';
+}
+
+function timeStringToMillis(timeStr) {
+  timeStr = extractValue(timeStr);
+  if (!timeStr) return 0;
+  const parts = timeStr.split(':');
+  if (parts.length === 2) {
+    const min = parseFloat(parts[0]);
+    const sec = parseFloat(parts[1]);
+    return (min * 60 + sec) * 1000;
+  }
+  const sec = parseFloat(timeStr);
+  return isNaN(sec) ? 0 : sec * 1000;
+}
+
+function formatLapTime(ms) {
+  if (typeof ms !== 'number' || isNaN(ms)) return '-';
+  const totalSec = ms / 1000;
+  const min = Math.floor(totalSec / 60);
+  const sec = (totalSec % 60).toFixed(3);
+  return `${min}:${sec.padStart(6, '0')}`;
+}
+
+function parseTimeToSeconds(time, isLapTime) {
+  const str = extractValue(time);
+  if (!str) return null;
+  if (isLapTime) return timeStringToMillis(str) / 1000;
+  if (str.toLowerCase().includes('lap')) return null;
+  const parsed = parseFloat(str.replace('+', ''));
+  return isNaN(parsed) ? null : parsed;
+}
+
+function getSessionMode() {
+  const si = state.SessionInfo || {};
+  const type = (si.Type || '').toLowerCase();
+  const name = (si.Name || '').toLowerCase();
+  const isQuali = type.includes('quali') || name.includes('qualifying');
+  const isPractice = type.includes('practice') || name.includes('practice') || name.includes('fp');
+  const isRace = type.includes('race') || (!isQuali && !isPractice);
+
+  let currentQualiPart = 1;
+  if (isQuali) {
+    if (name.includes('q3')) currentQualiPart = 3;
+    else if (name.includes('q2')) currentQualiPart = 2;
+    else currentQualiPart = 1;
+  }
+  return { isQuali, isPractice, isRace, currentQualiPart };
+}
+
+function getSortedDrivers() {
+  const drivers = state.DriverList || {};
+  const lines = (state.TimingData && state.TimingData.Lines) || {};
+  const topThree = (state.TopThree && state.TopThree.Lines) || [];
+  
+  const allNums = new Set([...Object.keys(lines), ...Object.keys(drivers)].filter(n => n !== '_kf'));
+  
+  return [...allNums].map(num => {
+    const line = lines[num] || {};
+    const drv = drivers[num] || {};
+    const summary = topThree.find(item => String(item.RacingNumber) === String(num)) || {};
+    const stints = (state.TimingAppData && state.TimingAppData.Lines && state.TimingAppData.Lines[num] && state.TimingAppData.Lines[num].Stints) || [];
+    const currentStint = stints[stints.length - 1] || null;
+    
+    return {
+      racingNumber: num,
+      position: line.Position ?? '99',
+      positionNum: parseInt(line.Position || '99', 10),
+      tla: drv.Tla || num,
+      teamColour: drv.TeamColour ? drv.TeamColour.replace('#','') : '888888',
+      startingPosition: drv.StartingPosition || null,
+      bestLapTime: line.BestLapTime || null,
+      lastLapTime: line.LastLapTime || null,
+      gapToLeader: extractValue(line.GapToLeader) || extractValue(summary.DiffToLeader) || '-',
+      gapToAhead: extractValue(line.IntervalToPositionAhead) || extractValue(summary.DiffToAhead) || '-',
+      inPit: line.InPit,
+      pitOut: line.PitOut,
+      numberOfPitStops: line.NumberOfPitStops ?? 0,
+      stopped: line.Stopped,
+      retired: line.Retired,
+      isKnockedOut: line.KnockedOut,
+      currentStint
+    };
+  }).sort((a,b) => a.positionNum - b.positionNum);
+}
+
+function computePracticeLeaderboard(driversList) {
+  const leaderboard = new Map();
+  const driversWithTimes = driversList
+    .map(d => ({ ...d, timeMillis: extractValue(d.bestLapTime) ? timeStringToMillis(d.bestLapTime) : null }))
+    .filter(d => d.timeMillis !== null && d.timeMillis > 0)
+    .sort((a, b) => a.timeMillis - b.timeMillis);
+
+  if (driversWithTimes.length === 0) {
+    driversList.forEach(d => leaderboard.set(d.racingNumber, { gap: '-', interval: '-' }));
+    return leaderboard;
+  }
+  const fastest = driversWithTimes[0].timeMillis;
+  driversWithTimes.forEach((d, i) => {
+    const gap = d.timeMillis - fastest;
+    const pGap = i === 0 ? extractValue(d.bestLapTime) : `+${(gap / 1000).toFixed(3)}`;
+    let pInt = '-';
+    if (i > 0) {
+      const ahead = driversWithTimes[i-1];
+      pInt = `+${((d.timeMillis - ahead.timeMillis) / 1000).toFixed(3)}`;
+    }
+    leaderboard.set(d.racingNumber, { gap: pGap, interval: pInt });
+  });
+  driversList.forEach(d => {
+    if (!leaderboard.has(d.racingNumber)) leaderboard.set(d.racingNumber, { gap: '-', interval: '-' });
+  });
+  return leaderboard;
+}
+
+function deriveRaceGaps(driversList) {
+  const derived = new Map();
+  let cumulativeGap = 0;
+  let previousGap = null;
+
+  driversList.forEach((driver, index) => {
+    const rawGap = driver.gapToLeader;
+    const rawInterval = driver.gapToAhead;
+    const gapSeconds = parseTimeToSeconds(rawGap, false);
+    const intervalSeconds = parseTimeToSeconds(rawInterval, false);
+    let gap = rawGap && rawGap !== '-' ? rawGap : '-';
+    let interval = rawInterval && rawInterval !== '-' ? rawInterval : '-';
+
+    if (index === 0 || driver.positionNum === 1) {
+      gap = 'LEADER';
+      interval = '-';
+      cumulativeGap = 0;
+      previousGap = 0;
+    } else {
+      const priorGap = previousGap;
+      if (gapSeconds !== null) {
+        cumulativeGap = gapSeconds;
+        previousGap = gapSeconds;
+        gap = `+${gapSeconds.toFixed(3)}`;
+      } else if (intervalSeconds !== null) {
+        cumulativeGap += intervalSeconds;
+        previousGap = cumulativeGap;
+        gap = `+${cumulativeGap.toFixed(3)}`;
+      }
+
+      if (interval === '-' && gapSeconds !== null && priorGap !== null) {
+        const delta = gapSeconds - priorGap;
+        if (Number.isFinite(delta) && delta >= 0) interval = `+${delta.toFixed(3)}`;
+      }
+    }
+
+    derived.set(driver.racingNumber, { gap, interval });
+  });
+  return derived;
+}
+
+const battleState = {
+  threshold: 1.5,
+  selectedPosition: null,
+  auto: true,
+  fontSize: 100,
+  currentGap: null,
+  targetGap: null,
+  trend: 'stable',
+  trendTimer: null,
+  animationFrame: null
+};
+
+function getBattleCandidates(){
+  const drivers = getSortedDrivers();
+  const raceTiming = deriveRaceGaps(drivers);
+  const battles = [];
+  for (let index = 1; index < drivers.length; index++) {
+    const ahead = drivers[index - 1];
+    const behind = drivers[index];
+    const timing = raceTiming.get(behind.racingNumber);
+    const gap = timing ? parseFloat(timing.interval) : NaN;
+    if (Number.isFinite(gap) && gap <= battleState.threshold) {
+      battles.push({ position: ahead.positionNum, driverAhead: ahead, driverBehind: behind, gap });
+    }
+  }
+  return battles;
+}
+
+function latestCompletedLap(racingNumber){
+  const history = lapHistoryMap[racingNumber] || [];
+  const historyLap = history.length ? history[history.length - 1] : null;
+  const liveLine = state.TimingData?.Lines?.[racingNumber] || {};
+  return historyLap || {
+    LapTime: liveLine.LastLapTime || null,
+    Sectors: Array.isArray(liveLine.Sectors) ? liveLine.Sectors : []
+  };
+}
+
+function battleDriverPictureMarkup(tla){
+  const portrait = portraitUrl(tla);
+  return portrait ? `<img class="battle-driver-portrait" src="${portrait}" alt="${tla}" onerror="this.remove()">` : '';
+}
+
+function compareTimingValues(a, b){
+  const ahead = timeStringToMillis(a);
+  const behind = timeStringToMillis(b);
+  if (!ahead || !behind) return { aheadClass: '', behindClass: '', diff: '-', diffClass: '' };
+  const delta = behind - ahead;
+  const seconds = (delta / 1000).toFixed(3);
+  return {
+    aheadClass: delta > 0 ? 'battle-faster' : 'battle-slower',
+    behindClass: delta < 0 ? 'battle-faster' : 'battle-slower',
+    diff: delta > 0 ? `+${seconds}` : seconds,
+    diffClass: Math.abs(delta) > 10 ? (delta > 0 ? 'battle-slower' : 'battle-faster') : ''
+  };
+}
+
+function updateBattleGap(gap){
+  if (!Number.isFinite(gap)) return;
+  if (battleState.targetGap !== null && gap.toFixed(3) !== battleState.targetGap.toFixed(3)) {
+    battleState.trend = gap > battleState.targetGap ? 'increasing' : 'decreasing';
+    clearTimeout(battleState.trendTimer);
+    battleState.trendTimer = setTimeout(() => { battleState.trend = 'stable'; }, 2000);
+  }
+  battleState.targetGap = gap;
+  if (battleState.currentGap === null) {
+    battleState.currentGap = gap;
+    return;
+  }
+  const start = battleState.currentGap;
+  const started = performance.now();
+  cancelAnimationFrame(battleState.animationFrame);
+  const animate = now => {
+    const progress = Math.min((now - started) / 350, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    battleState.currentGap = start + (gap - start) * eased;
+    if (progress < 1) battleState.animationFrame = requestAnimationFrame(animate);
+  };
+  battleState.animationFrame = requestAnimationFrame(animate);
+}
+
+function renderBattleWidget(){
+  const body = document.getElementById('battleBody');
+  const settingSelect = document.getElementById('battleSettingSelect');
+  const autoCheck = document.getElementById('battleAutoCheck');
+  const battles = getBattleCandidates();
+  autoCheck.checked = battleState.auto;
+  document.getElementById('battleThresholdSlider').value = battleState.threshold;
+  document.getElementById('battleFontSlider').value = battleState.fontSize;
+  const options = `<option value="">Auto closest</option>${battles.map(battle => `<option value="${battle.position}">P${battle.position}: ${battle.driverAhead.tla} vs ${battle.driverBehind.tla}</option>`).join('')}`;
+  if (settingSelect.innerHTML !== options) settingSelect.innerHTML = options;
+  settingSelect.value = battleState.auto ? '' : (battleState.selectedPosition || '');
+
+  if (battleState.auto && battles.length) {
+    const closest = battles.reduce((best, battle) => battle.gap < best.gap ? battle : best, battles[0]);
+    battleState.selectedPosition = closest.position;
+  }
+  const selected = battles.find(battle => battle.position === battleState.selectedPosition);
+  if (!selected) {
+    battleState.currentGap = null;
+    body.innerHTML = battles.length
+      ? `<div class="battle-selection-prompt"><h3>Select a battle to view</h3><select class="battle-select" id="battleSelect"><option value="">Select a battle</option>${battles.map(battle => `<option value="${battle.position}">Battle for P${battle.position} (${battle.driverAhead.tla} vs ${battle.driverBehind.tla})</option>`).join('')}</select></div>`
+      : '<div class="battle-empty-prompt">No close battles on track at the moment.</div>';
+    return;
+  }
+
+  updateBattleGap(selected.gap);
+  const aheadLap = latestCompletedLap(selected.driverAhead.racingNumber);
+  const behindLap = latestCompletedLap(selected.driverBehind.racingNumber);
+  const lastLap = compareTimingValues(aheadLap?.LapTime, behindLap?.LapTime);
+  const aheadSectors = aheadLap?.Sectors || [];
+  const behindSectors = behindLap?.Sectors || [];
+  const sectorRows = [0, 1, 2].map(index => {
+    const comparison = compareTimingValues(aheadSectors[index]?.Value, behindSectors[index]?.Value);
+    return `<tr><td class="battle-metric-label">Sector ${index + 1}</td><td class="${comparison.aheadClass}">${extractValue(aheadSectors[index]) || '-'}</td><td class="battle-diff ${comparison.diffClass}">${comparison.diff}</td><td class="${comparison.behindClass}">${extractValue(behindSectors[index]) || '-'}</td></tr>`;
+  }).join('');
+  const gapClass = battleState.trend === 'increasing' ? 'battle-gap-increasing' : battleState.trend === 'decreasing' ? 'battle-gap-decreasing' : '';
+  const aheadPicture = battleDriverPictureMarkup(selected.driverAhead.tla);
+  const behindPicture = battleDriverPictureMarkup(selected.driverBehind.tla);
+
+  body.innerHTML = `
+    <div class="battle-widget" style="font-size:${battleState.fontSize}%">
+      <div class="battle-content">
+        <div class="battle-table-container">
+          <table class="battle-table"><tbody>
+            <tr class="main-info-row">
+              <td class="battle-metric-label">Battle for P${selected.position}</td>
+              <td class="battle-driver-info"><span class="battle-drs-indicator ${telemetry[selected.driverAhead.racingNumber]?.drs >= 12 ? 'battle-drs-active' : ''}"></span>${aheadPicture}<span>${selected.driverAhead.tla}</span></td>
+              <td class="battle-gap ${gapClass}">${battleState.currentGap?.toFixed(3) || selected.gap.toFixed(3)}s</td>
+              <td class="battle-driver-info"><span>${selected.driverBehind.tla}</span>${behindPicture}<span class="battle-drs-indicator ${telemetry[selected.driverBehind.racingNumber]?.drs >= 12 ? 'battle-drs-active' : ''}"></span></td>
+            </tr>
+            <tr><td class="battle-metric-label">Last Lap</td><td class="${lastLap.aheadClass}">${extractValue(aheadLap?.LapTime) || '-'}</td><td class="battle-diff ${lastLap.diffClass}">${lastLap.diff}</td><td class="${lastLap.behindClass}">${extractValue(behindLap?.LapTime) || '-'}</td></tr>
+            ${sectorRows}
+          </tbody></table>
+        </div>
+      </div>
+    </div>`;
+}
+
+const flyingLapState = {
+  auto: true,
+  driverNumber: null,
+  fontSize: 100,
+  lapKey: '',
+  lapStartedAt: 0,
+  lastRenderedKey: ''
+};
+
+const FLYING_SEGMENT_STATUSES = [2048, 2049, 2051, 2052];
+
+function flyingLapSessionSupported(){
+  const mode = getSessionMode();
+  return mode.isQuali || mode.isPractice;
+}
+
+function flyingLapDrivers(){
+  return getSortedDrivers().map(driver => {
+    const line = state.TimingData?.Lines?.[driver.racingNumber] || {};
+    const sectors = Array.isArray(line.Sectors) ? line.Sectors : [];
+    const activeSegments = sectors.reduce((count, sector) => count + (sector.Segments || []).filter(segment => FLYING_SEGMENT_STATUSES.includes(Number(segment.Status))).length, 0);
+    const active = !driver.inPit && !driver.stopped && !driver.retired && activeSegments > 0;
+    return { driver, line, sectors, activeSegments, active };
+  });
+}
+
+function flyingLapTarget(drivers, selected){
+  const available = drivers.filter(item => !item.driver.isKnockedOut && !item.driver.retired);
+  if (!available.length) return null;
+  if (getSessionMode().isQuali) {
+    return available.find(item => item.driver.positionNum === 1) || available[0];
+  }
+  return available.reduce((best, item) => {
+    const bestTime = timeStringToMillis(best.driver.bestLapTime);
+    const itemTime = timeStringToMillis(item.driver.bestLapTime);
+    return itemTime > 0 && (bestTime === 0 || itemTime < bestTime) ? item : best;
+  }, available[0]);
+}
+
+function flyingLapFormatElapsed(ms){
+  if (!ms || ms < 0) return '-:--.---';
+  const totalSeconds = ms / 1000;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = (totalSeconds % 60).toFixed(3).padStart(6, '0');
+  return `${minutes}:${seconds}`;
+}
+
+function flyingLapSegmentClass(status){
+  switch (Number(status)) {
+    case 2048: return 'flying-minisector-set';
+    case 2049: return 'flying-minisector-pb';
+    case 2051:
+    case 2052: return 'flying-minisector-ob';
+    case 2064: return 'flying-minisector-pit';
+    default: return 'flying-minisector-stopped';
+  }
+}
+
+function renderFlyingLapWidget(){
+  const body = document.getElementById('flyingLapBody');
+  const select = document.getElementById('flyingDriverSelect');
+  const drivers = flyingLapDrivers();
+  const modeSupported = flyingLapSessionSupported();
+  const options = `<option value="">Auto select</option>${drivers.map(item => `<option value="${item.driver.racingNumber}">${item.driver.tla} (${item.driver.racingNumber})</option>`).join('')}`;
+  if (select.innerHTML !== options) select.innerHTML = options;
+  select.value = flyingLapState.auto ? '' : (flyingLapState.driverNumber || '');
+  document.getElementById('flyingAutoCheck').checked = flyingLapState.auto;
+  document.getElementById('flyingFontSlider').value = flyingLapState.fontSize;
+
+  if (!modeSupported) {
+    body.innerHTML = '<div class="flying-lap-empty">Flying Lap is available during Practice and Qualifying.</div>';
+    return;
+  }
+
+  let selected = flyingLapState.auto
+    ? drivers.filter(item => item.active).sort((a, b) => b.activeSegments - a.activeSegments)[0]
+    : drivers.find(item => item.driver.racingNumber === flyingLapState.driverNumber);
+  if (!selected) {
+    body.innerHTML = '<div class="flying-lap-empty">Waiting for a driver on a flying lap…</div>';
+    return;
+  }
+  flyingLapState.driverNumber = selected.driver.racingNumber;
+
+  const line = selected.line;
+  const lapKey = `${selected.driver.racingNumber}:${line.NumberOfLaps || ''}:${extractValue(line.LastLapTime)}`;
+  if (flyingLapState.lapKey !== lapKey) {
+    flyingLapState.lapKey = lapKey;
+    flyingLapState.lapStartedAt = performance.now();
+  }
+  const target = flyingLapTarget(drivers, selected);
+  const targetTime = target ? extractValue(target.driver.bestLapTime) : '';
+  const currentTime = flyingLapState.lapStartedAt ? flyingLapFormatElapsed(performance.now() - flyingLapState.lapStartedAt) : '-:--.---';
+  const tyreCompound = (selected.driver.currentStint?.Compound || '').toUpperCase();
+  const tyreStyle = TYRE_STYLES[tyreCompound] || { code: '?', color: '#888' };
+  const teamLogo = teamLogoMarkup(selected.driver.tla).replace('driver-team-only-logo', 'flying-team-logo');
+  const sectorCells = [0, 1, 2].map(index => {
+    const sector = selected.sectors[index];
+    const segments = sector?.Segments || [];
+    const progress = segments.map(segment => `<span class="flying-minisector ${flyingLapSegmentClass(segment.Status)}"></span>`).join('');
+    return `<div class="flying-sector-bar">
+      <div class="flying-sector-details"><span class="flying-sector-label">S${index + 1}</span><span class="flying-sector-time">${extractValue(sector) || '-'}</span></div>
+      <div class="flying-minisectors-track">${progress || '<span class="flying-minisector flying-minisector-stopped"></span>'}</div>
+    </div>`;
+  }).join('');
+
+  body.innerHTML = `<div class="flying-lap-widget" style="font-size:${flyingLapState.fontSize}%">
+    <div class="flying-driver-info">
+      <div class="flying-lap-header" style="border-color:#${selected.driver.teamColour}">
+        <span class="flying-position">${selected.driver.position}</span>
+        <div class="flying-driver-name">${teamLogo}<span class="flying-driver-tla">${selected.driver.tla}</span><span class="flying-driver-number">#${selected.driver.racingNumber}</span></div>
+        <div class="flying-tyre">${tyreIconMarkup(tyreStyle)}</div>
+      </div>
+      <div class="flying-lap-time-container">
+        <div class="flying-lap-time ${flyingLapState.lastRenderedKey !== lapKey ? 'flying-lap-time-animated' : ''}">${currentTime}</div>
+        ${target ? `<div class="flying-target-time" style="border-bottom:2px solid #${target.driver.teamColour}"><div class="flying-target-driver"><span>${target.driver.tla}</span><span class="flying-driver-number">#${target.driver.racingNumber}</span></div><span class="flying-target-value">${targetTime || '-'}</span></div>` : ''}
+      </div>
+      <div class="flying-sectors">${sectorCells}</div>
+    </div>
+  </div>`;
+  flyingLapState.lastRenderedKey = lapKey;
+}
+
+/* ============================================================
+   1. TIMING TOWER TABLE RENDERER
+   ============================================================ */
+const timingSettings = {
+  showNumber: true, showTire: true, showBest: true, showLast: true,
+  showGap: true, showInterval: true, showPitstopCount: true,
+  showBestSectors: true, showLastSectors: true, showMinisectors: true
+};
+
+function timingSectorClass(status){
+  switch (Number(status)) {
+    case 2048: return 'minisector-set';
+    case 2049: return 'minisector-pb';
+    case 2051:
+    case 2052: return 'minisector-ob';
+    case 2064: return 'minisector-pit';
+    default: return 'minisector-unknown';
+  }
+}
+
+function timingSectorCell(sector){
+  if (!sector) return '<div class="sector-cell-content"><span>-</span></div>';
+  const sectorClass = sector.OverallFastest ? 'fastest-lap' : (sector.PersonalFastest ? 'gainer' : '');
+  const value = timingSettings.showLastSectors ? (extractValue(sector) || '-') : '';
+  const minisectors = timingSettings.showMinisectors && Array.isArray(sector.Segments) && sector.Segments.length
+    ? `<div class="minisector-container">${sector.Segments.map(segment => `<span class="minisector ${timingSectorClass(segment && segment.Status)}"></span>`).join('')}</div>`
+    : '';
+  return `<div class="sector-cell-content"><span class="${sectorClass}">${value}</span>${minisectors}</div>`;
+}
+
+function timingColumns(isQuali){
+  const columns = [{ key: 'pos', label: 'Pos' }];
+  if (timingSettings.showNumber) columns.push({ key: 'num', label: '#' });
+  columns.push({ key: 'driver', label: 'Driver' });
+  if (timingSettings.showTire) columns.push({ key: 'tire', label: 'Tyre' });
+  if (isQuali) {
+    columns.push({ key: 'time', label: 'Time' });
+  } else {
+    if (timingSettings.showBest) columns.push({ key: 'best', label: 'Best' });
+    if (timingSettings.showLast) columns.push({ key: 'last', label: 'Last' });
+  }
+  if (timingSettings.showBestSectors || timingSettings.showLastSectors) {
+    columns.push({ key: 's1', label: 'S1' }, { key: 's2', label: 'S2' }, { key: 's3', label: 'S3' });
+  }
+  if (timingSettings.showGap) columns.push({ key: 'gap', label: 'Gap' });
+  if (timingSettings.showInterval) columns.push({ key: 'interval', label: 'Int' });
+  if (timingSettings.showPitstopCount) columns.push({ key: 'pits', label: isQuali ? 'In Pits' : 'Pits' });
+  columns.push({ key: 'delta', label: 'P+-' });
+  return columns;
+}
+
+function timingStatusInfo(){
+  const status = state.TrackStatus || {};
+  const message = String(status.Message || '').toLowerCase();
+  switch (String(status.Status || '')) {
+    case '1': return { label: 'TRACK CLEAR', cls: 'clear' };
+    case '2': return { label: 'YELLOW FLAG', cls: 'yellow' };
+    case '4': return { label: 'SAFETY CAR', cls: 'sc' };
+    case '5': return { label: 'RED FLAG', cls: 'red' };
+    case '6': return { label: 'VIRTUAL SAFETY CAR', cls: 'vsc' };
+    case '7': return { label: 'VSC ENDING', cls: 'vsc' };
+  }
+  if (message.includes('chequered')) return { label: 'CHEQUERED FLAG', cls: 'clear' };
+  if (message.includes('virtual')) return { label: 'VIRTUAL SAFETY CAR', cls: 'vsc' };
+  if (message.includes('safety')) return { label: 'SAFETY CAR', cls: 'sc' };
+  if (message.includes('red')) return { label: 'RED FLAG', cls: 'red' };
+  if (message.includes('yellow')) return { label: 'YELLOW FLAG', cls: 'yellow' };
+  if (message.includes('clear') || message.includes('green')) return { label: 'TRACK CLEAR', cls: 'clear' };
+  return { label: 'TRACK STATUS UNKNOWN', cls: '' };
+}
+
+function renderTimingTower() {
+  const { isQuali, isPractice, isRace, currentQualiPart } = getSessionMode();
+  document.getElementById('timingModeIndicator').textContent = isQuali ? `QUALI Q${currentQualiPart}` : (isPractice ? 'PRACTICE' : 'RACE');
+  const thead = document.getElementById('timingTableHead');
+  const columns = timingColumns(isQuali);
+  thead.innerHTML = columns.map(column => `<th>${column.label}</th>`).join('');
+  const statusInfo = timingStatusInfo();
+  const statusBanner = document.getElementById('timingStatusBanner');
+  statusBanner.textContent = statusInfo.label;
+  statusBanner.className = `timing-status-banner ${statusInfo.cls}`;
+
+  const baseDrivers = getSortedDrivers();
+  const practiceMap = isPractice ? computePracticeLeaderboard(baseDrivers) : null;
+  const raceGapMap = !isQuali && !isPractice ? deriveRaceGaps(baseDrivers) : null;
+
+  const driversWithStatus = baseDrivers.map(d => {
+    let isAtRisk = false;
+    if (isQuali) {
+      if (currentQualiPart === 1) isAtRisk = d.positionNum >= 17 && d.positionNum <= 22;
+      else if (currentQualiPart === 2) isAtRisk = d.positionNum >= 11 && d.positionNum <= 16;
+    }
+    return { ...d, isAtRisk };
+  });
+
+  let selectedDriverTimeSec = null;
+  const isLapTime = isQuali || isPractice;
+  if (selectedDriverNumber) {
+    const sel = driversWithStatus.find(d => d.racingNumber === selectedDriverNumber);
+    if (sel) {
+      const src = isQuali ? sel.bestLapTime : (isPractice ? sel.bestLapTime : (raceGapMap?.get(sel.racingNumber)?.gap || sel.gapToLeader));
+      selectedDriverTimeSec = parseTimeToSeconds(src, isLapTime);
+    }
+  }
+
+  const tbody = document.getElementById('timingTableBody');
+  if (!driversWithStatus.length) {
+    tbody.innerHTML = `<tr><td colspan="${columns.length}" class="empty-hint">Waiting for timing feed…</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = driversWithStatus.map(d => {
+    const raceTiming = raceGapMap?.get(d.racingNumber);
+    let displayInterval = isPractice ? (practiceMap?.get(d.racingNumber)?.interval ?? '-') : (raceTiming?.interval || d.gapToAhead);
+
+    if (selectedDriverTimeSec !== null) {
+      const src = isQuali ? d.bestLapTime : (isPractice ? d.bestLapTime : (raceTiming?.gap || d.gapToLeader));
+      const dSec = parseTimeToSeconds(src, isLapTime);
+      if (dSec !== null) {
+        if (d.racingNumber === selectedDriverNumber) displayInterval = 'SELECTED';
+        else {
+          const delta = dSec - selectedDriverTimeSec;
+          displayInterval = (delta > 0 ? '+' : '') + delta.toFixed(3);
+        }
+      }
+    }
+
+    const isDimmed = d.stopped || d.retired || d.isKnockedOut;
+    const isSelected = d.racingNumber === selectedDriverNumber;
+    const compound = (d.currentStint?.Compound || '?').toUpperCase();
+    const tyreStyle = TYRE_STYLES[compound] || { color: '#888', code: '?' };
+    const tyreAge = d.currentStint ? (d.currentStint.TotalLaps ?? d.currentStint.LapsOnTyre ?? '') : '';
+
+    let posDisplay = d.position;
+    if (isQuali) posDisplay = d.isKnockedOut ? `<span class="knocked-out-pos">OUT</span>` : d.position;
+
+    const pChange = d.startingPosition ? (parseInt(d.startingPosition, 10) - d.positionNum) : 0;
+    const pChangeClass = pChange > 0 ? 'gainer' : (pChange < 0 ? 'loser' : '');
+    const pChangeTxt = d.startingPosition ? (pChange > 0 ? `+${pChange}` : (pChange === 0 ? '0' : `${pChange}`)) : '-';
+
+    const bestVal = extractValue(d.bestLapTime) || '-';
+    const lastVal = extractValue(d.lastLapTime) || '-';
+    const isFastest = d.bestLapTime?.OverallFastest;
+    const sectors = state.TimingData?.Lines?.[d.racingNumber]?.Sectors || [];
+    const gapVal = isPractice ? (practiceMap?.get(d.racingNumber)?.gap || '-') : (raceTiming?.gap || (d.positionNum === 1 ? 'LEADER' : d.gapToLeader));
+    const cells = columns.map(column => {
+      switch (column.key) {
+        case 'pos': return `<td><b>${posDisplay}</b></td>`;
+        case 'num': return `<td>${driverBadgeMarkup(d.tla, d.racingNumber)}</td>`;
+        case 'driver': return `<td class="tla-cell"><span class="driver-identity">${teamLogoMarkup(d.tla)}<span class="driver-identity-name">${d.tla}</span></span></td>`;
+        case 'tire': return `<td style="color:${tyreStyle.color};font-weight:800;">${tyreIconMarkup(tyreStyle)}${tyreAge !== '' ? `<span class="tyre-age">(${tyreAge})</span>` : ''}</td>`;
+        case 'best': return `<td class="${isFastest ? 'fastest-lap' : ''}">${bestVal}</td>`;
+        case 'last': return `<td>${lastVal}</td>`;
+        case 'time': return `<td class="${isFastest ? 'fastest-lap' : ''}">${bestVal !== '-' ? bestVal : lastVal}</td>`;
+        case 's1': return `<td>${timingSectorCell(sectors[0])}</td>`;
+        case 's2': return `<td>${timingSectorCell(sectors[1])}</td>`;
+        case 's3': return `<td>${timingSectorCell(sectors[2])}</td>`;
+        case 'gap': return `<td>${gapVal}</td>`;
+        case 'interval': return `<td>${displayInterval}</td>`;
+        case 'pits': return `<td>${d.inPit ? '<span style="color:var(--f1-amber)">In Pits</span>' : (d.pitOut ? 'Pit exit' : d.numberOfPitStops)}</td>`;
+        case 'delta': return `<td class="${pChangeClass}">${pChangeTxt}</td>`;
+        default: return '<td></td>';
+      }
+    }).join('');
+
+    return `
+      <tr class="clickable ${d.isAtRisk ? 'at-risk-elimination' : ''} ${isSelected ? 'selected-driver' : ''} ${isDimmed ? 'driver-dimmed' : ''}"
+          onclick="handleDriverClick('${d.racingNumber}')"
+          style="border-left: 4px solid #${d.teamColour};">
+        ${cells}
+      </tr>
+    `;
+  }).join('');
+}
+
+function handleDriverClick(racingNumber) {
+  selectedDriverNumber = selectedDriverNumber === racingNumber ? null : racingNumber;
+  dirty = true;
+}
+
+/* ============================================================
+   2. CIRCUIT MAP WITH PAN, ZOOM & RELOCATE CAMERA
+   ============================================================ */
+const ROTATION_FIX = 90;
+const SPACE = 1000;
+let mapBounds = [0, 0, 1000, 1000];
+let mapCenterX = 0, mapCenterY = 0, mapRotation = 0;
+
+let cameraZoom = 1;
+let cameraPan = { x: 0, y: 0 };
+let isDraggingMap = false;
+let dragStart = { x: 0, y: 0 };
+let followDriver = false;
+
+function rad(deg) { return deg * (Math.PI / 180); }
+function rotate(x, y, angleDeg, cx, cy) {
+  const r = rad(angleDeg);
+  const cos = Math.cos(r), sin = Math.sin(r);
+  const nx = cos * (x - cx) - sin * (y - cy) + cx;
+  const ny = sin * (x - cx) + cos * (y - cy) + cy;
+  return { x: nx, y: ny };
+}
+
+async function loadCircuitMap(key) {
+  try {
+    const year = new Date().getFullYear();
+    const res = await fetch(`https://api.multiviewer.app/api/v1/circuits/${key}/${year}`);
+    if (!res.ok) return;
+    const json = await res.json();
+    if (!Array.isArray(json.x) || !json.x.length) return;
+
+    mapCenterX = (Math.max(...json.x) - Math.min(...json.x)) / 2;
+    mapCenterY = (Math.max(...json.y) - Math.min(...json.y)) / 2;
+    mapRotation = (json.rotation || 0) + ROTATION_FIX;
+
+    const rotatedPoints = json.x.map((x, i) => rotate(x, json.y[i], mapRotation, mapCenterX, mapCenterY));
+    const px = rotatedPoints.map(p => p.x), py = rotatedPoints.map(p => p.y);
+    const minX = Math.min(...px) - SPACE, minY = Math.min(...py) - SPACE;
+    const w = Math.max(...px) - minX + SPACE * 2, h = Math.max(...py) - minY + SPACE * 2;
+
+    mapBounds = [minX, minY, w, h];
+    resetMapCamera();
+
+    const d = `M${rotatedPoints[0].x},${rotatedPoints[0].y} ` + rotatedPoints.map(p => `L${p.x},${p.y}`).join(' ');
+    document.getElementById('svgTrackOutline').setAttribute('d', d);
+
+    if (rotatedPoints.length > 3) {
+      const fl = rotate(json.x[0], json.y[0], mapRotation, mapCenterX, mapCenterY);
+      const dx = rotatedPoints[3].x - rotatedPoints[0].x;
+      const dy = rotatedPoints[3].y - rotatedPoints[0].y;
+      const startAngle = Math.atan2(dy, dx) * (180 / Math.PI);
+      const flRect = document.getElementById('svgFinishLine');
+      flRect.setAttribute('x', fl.x - 275);
+      flRect.setAttribute('y', fl.y - 90);
+      flRect.setAttribute('transform', `rotate(${startAngle + 90}, ${fl.x}, ${fl.y})`);
+      flRect.style.display = 'block';
+    }
+
+    trackData = {
+      points: rotatedPoints,
+      corners: (json.corners || []).map(c => ({
+        number: c.number,
+        pos: rotate(c.trackPosition.x, c.trackPosition.y, mapRotation, mapCenterX, mapCenterY),
+        labelPos: rotate(
+          c.trackPosition.x + 540 * Math.cos(rad(c.angle)),
+          c.trackPosition.y + 540 * Math.sin(rad(c.angle)),
+          mapRotation, mapCenterX, mapCenterY
+        )
+      }))
+    };
+    renderCorners();
+  } catch (e) {}
+}
+
+function updateMapCamera() {
+  const [minX, minY, w, h] = mapBounds;
+  const cx = minX + w / 2;
+  const cy = minY + h / 2;
+  const g = document.getElementById('mapTransformGroup');
+  if (g) {
+    g.setAttribute('transform', `translate(${cameraPan.x}, ${cameraPan.y}) translate(${cx}, ${cy}) scale(${cameraZoom}) translate(${-cx}, ${-cy})`);
+  }
+}
+
+function zoomMap(factor) {
+  cameraZoom = Math.max(0.4, Math.min(8, cameraZoom * factor));
+  updateMapCamera();
+}
+
+function resetMapCamera() {
+  cameraZoom = 1;
+  cameraPan = { x: 0, y: 0 };
+  followDriver = false;
+  document.getElementById('btnFocusDriver').classList.remove('active');
+  const [minX, minY, w, h] = mapBounds;
+  document.getElementById('trackSvg').setAttribute('viewBox', `${minX} ${minY} ${w} ${h}`);
+  updateMapCamera();
+}
+
+function toggleFollowDriver() {
+  followDriver = !followDriver;
+  document.getElementById('btnFocusDriver').classList.toggle('active', followDriver);
+}
+
+function setupMapInteraction() {
+  const container = document.getElementById('mapContainer');
+  if (!container) return;
+
+  container.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.15 : 0.85;
+    zoomMap(factor);
+  }, { passive: false });
+
+  container.addEventListener('mousedown', (e) => {
+    if (e.target.closest('.map-controls-floating') || e.target.closest('.map-selection-strip')) return;
+    isDraggingMap = true;
+    container.classList.add('panning');
+    dragStart = { x: e.clientX, y: e.clientY };
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isDraggingMap) return;
+    const dx = (e.clientX - dragStart.x) * (mapBounds[2] / container.clientWidth) / cameraZoom;
+    const dy = (e.clientY - dragStart.y) * (mapBounds[3] / container.clientHeight) / cameraZoom;
+    cameraPan.x += dx;
+    cameraPan.y += dy;
+    dragStart = { x: e.clientX, y: e.clientY };
+    followDriver = false;
+    document.getElementById('btnFocusDriver').classList.remove('active');
+    updateMapCamera();
+  });
+
+  window.addEventListener('mouseup', () => { isDraggingMap = false; container.classList.remove('panning'); });
+}
+
+function renderCorners() {
+  const g = document.getElementById('svgCornersGroup');
+  g.innerHTML = '';
+  if (!showCornerNumbers || !trackData) return;
+  trackData.corners.forEach(c => {
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', c.labelPos.x);
+    text.setAttribute('y', c.labelPos.y);
+    text.setAttribute('fill', '#9ca3af');
+    text.setAttribute('font-size', '280');
+    text.setAttribute('font-family', 'JetBrains Mono');
+    text.setAttribute('font-weight', '700');
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('dominant-baseline', 'middle');
+    text.textContent = c.number;
+    g.appendChild(text);
+  });
+}
+
+function toggleCornerNumbers() {
+  showCornerNumbers = !showCornerNumbers;
+  document.getElementById('btnToggleCorners').classList.toggle('active', showCornerNumbers);
+  renderCorners();
+}
+function toggleMapWeather() {
+  showMapWeather = !showMapWeather;
+  document.getElementById('btnToggleWeather').classList.toggle('active', showMapWeather);
+  document.getElementById('mapWeatherOverlay').style.display = showMapWeather ? 'flex' : 'none';
+}
+function handleMapBackgroundClick(e) {
+  if (e.target.tagName === 'svg' || e.target.id === 'svgTrackOutline') handleDriverClick(selectedDriverNumber);
+}
+
+function renderMapCars() {
+  const g = document.getElementById('svgCarsGroup');
+  const now = performance.now();
+  const drivers = state.DriverList || {};
+  let html = '';
+
+  for (const num in carAnim) {
+    const a = carAnim[num];
+    const t = Math.min(1, (now - a.st) / a.dur);
+    const rawX = a.sx + (a.tx - a.sx) * t;
+    const rawY = a.sy + (a.ty - a.sy) * t;
+    const p = rotate(rawX, rawY, mapRotation, mapCenterX, mapCenterY);
+    const drv = drivers[num] || {};
+    const color = drv.TeamColour ? '#' + drv.TeamColour.replace('#','') : '#FFFFFF';
+    const tla = drv.Tla || num;
+    const isSelected = selectedDriverNumber === num;
+    const isFocused = !selectedDriverNumber || isSelected;
+
+    if (isSelected && followDriver) {
+      const [minX, minY, w, h] = mapBounds;
+      cameraPan.x = (minX + w / 2) - p.x;
+      cameraPan.y = (minY + h / 2) - p.y;
+      updateMapCamera();
+    }
+
+    html += `
+      <g onclick="event.stopPropagation(); handleDriverClick('${num}');" style="cursor:pointer; opacity:${isFocused ? 1 : 0.4};">
+        ${isSelected ? `<circle cx="${p.x}" cy="${p.y}" r="320" fill="none" stroke="var(--f1-accent)" stroke-width="45" opacity="0.9"/>` : ''}
+        <circle cx="${p.x}" cy="${p.y}" r="220" fill="${color}" stroke="#06070a" stroke-width="40"/>
+        <text x="${p.x}" y="${p.y - 300}" fill="#ffffff" font-size="240" font-family="Plus Jakarta Sans" font-weight="800" text-anchor="middle">${tla}</text>
+      </g>
+    `;
+  }
+  g.innerHTML = html;
+  renderMapSelectionStrip();
+}
+
+function renderMapSelectionStrip() {
+  const strip = document.getElementById('mapSelectionStrip');
+  if (!selectedDriverNumber) {
+    strip.style.display = 'none';
+    return;
+  }
+  const drivers = getSortedDrivers();
+  const sel = drivers.find(d => d.racingNumber === selectedDriverNumber);
+  if (!sel) { strip.style.display = 'none'; return; }
+
+  const { isRace } = getSessionMode();
+  strip.style.display = 'flex';
+
+  if (isRace) {
+    const selPos = sel.positionNum;
+    const ahead = drivers.find(d => d.positionNum === selPos - 1);
+    const behind = drivers.find(d => d.positionNum === selPos + 1);
+
+    strip.innerHTML = `
+      <div class="strip-col">
+        ${ahead ? `
+          <span style="color:var(--text-dim);font-size:10px;">AHEAD</span>
+          <b class="strip-driver-tla" style="color:#${ahead.teamColour}">${ahead.tla}</b>
+          <span class="strip-gap">+${sel.gapToAhead || '-'}</span>
+        ` : `<span style="color:var(--text-dim)">P1 LEADER</span>`}
+      </div>
+      <div class="strip-col" style="background:rgba(255,255,255,0.06);padding:3px 8px;border-radius:6px;">
+        <span style="color:var(--f1-accent);font-weight:800;">P${sel.position}</span>
+        <b class="strip-driver-tla" style="color:#${sel.teamColour}">${sel.tla}</b>
+      </div>
+      <div class="strip-col">
+        ${behind ? `
+          <span style="color:var(--text-dim);font-size:10px;">BEHIND</span>
+          <b class="strip-driver-tla" style="color:#${behind.teamColour}">${behind.tla}</b>
+          <span class="strip-gap">+${behind.gapToAhead || '-'}</span>
+        ` : `<span style="color:var(--text-dim)">TAIL OF FIELD</span>`}
+        <button class="strip-close" onclick="event.stopPropagation(); handleDriverClick(selectedDriverNumber);">✕</button>
+      </div>
+    `;
+  } else {
+    strip.innerHTML = `
+      <div class="strip-col">
+        <span style="color:var(--f1-accent);font-weight:800;">P${sel.position}</span>
+        <b class="strip-driver-tla" style="color:#${sel.teamColour}">${sel.tla}</b>
+        <span style="color:var(--text-dim);margin-left:6px;">Best: ${extractValue(sel.bestLapTime) || '-'}</span>
+      </div>
+      <div class="strip-col">
+        <span>Last: <b>${extractValue(sel.lastLapTime) || '-'}</b></span>
+        <span style="color:var(--text-dim)">${sel.inPit ? 'IN PIT' : 'ON TRACK'}</span>
+        <button class="strip-close" onclick="event.stopPropagation(); handleDriverClick(selectedDriverNumber);">✕</button>
+      </div>
+    `;
+  }
+}
+
+/* ============================================================
+   3. COCKPIT TELEMETRY RENDERER
+   ============================================================ */
+const MAX_RPM = 12500, LIGHTS_START_RPM = MAX_RPM * 0.6;
+function renderTelemetry(){
+  const el = document.getElementById('telemetryBody');
+  if (!selectedDriverNumber){
+    el.innerHTML = '<div class="empty-hint">Select a driver on the Timing Tower to monitor live car telemetry.</div>';
+    return;
+  }
+  const drv = (state.DriverList || {})[selectedDriverNumber] || {};
+  const t = telemetry[selectedDriverNumber] || {};
+  const color = drv.TeamColour ? '#'+drv.TeamColour.replace('#','') : '#888';
+
+  const nLights = 15;
+  let lightsHtml = '';
+  for (let i=0;i<nLights;i++){
+    const threshold = LIGHTS_START_RPM + (i*(MAX_RPM-LIGHTS_START_RPM)/nLights);
+    const on = (t.rpm||0) >= threshold;
+    const c = i>=nLights-3 ? 'var(--f1-purple)' : (i>=nLights-6 ? 'var(--f1-red)' : 'var(--f1-amber)');
+    lightsHtml += `<i style="background:${on?c:'rgba(255,255,255,0.06)'}"></i>`;
+  }
+
+  const drsOpen = typeof t.drs === 'number' && [10,12,14].includes(t.drs);
+  const aeroOpen = t.aero === 1;
+  const overtakeOpen = t.overtake === 1;
+
+  el.innerHTML = `
+    <div class="telem-dashboard">
+      <div class="telem-driver-bar">
+        <img class="telem-driver-avatar" src="${portraitUrl(drv.Tla)}" onerror="this.style.display='none'">
+        <div class="telem-driver-info">
+          <b style="color:${color}">${drv.Tla || selectedDriverNumber}</b>
+          <span style="font-size:11px;color:var(--text-sub);margin-left:6px;">${drv.LastName||''}</span>
+        </div>
+      </div>
+      <div class="rpm-strip">${lightsHtml}</div>
+      <div class="cockpit-stats">
+        <div class="big-speed">${t.speed ?? '0'}<span>KM/H</span></div>
+        <div class="gear-box">${t.gear != null ? t.gear : 'N'}</div>
+      </div>
+      <div class="pedal-gauges">
+        <div class="pedal-row">
+          <span class="pedal-label">THROTTLE</span>
+          <div class="pedal-track"><div class="pedal-fill thr" style="width:${t.throttle||0}%"></div></div>
+          <span>${t.throttle||0}%</span>
+        </div>
+        <div class="pedal-row">
+          <span class="pedal-label">BRAKE</span>
+          <div class="pedal-track"><div class="pedal-fill brk" style="width:${t.brake?100:0}%"></div></div>
+          <span>${t.brake?'100%':'0%'}</span>
+        </div>
+      </div>
+      <div class="cockpit-pills">
+        <span class="cockpit-pill ${drsOpen?'active':''}">DRS</span>
+        <span class="cockpit-pill aero ${aeroOpen?'active':''}">AERO ACTIVE</span>
+        <span class="cockpit-pill ot ${overtakeOpen?'active':''}">OVERTAKE</span>
+        <span class="cockpit-pill" style="margin-left:auto;">${t.rpm||0} RPM</span>
+      </div>
+    </div>`;
+}
+
+/* ============================================================
+   4. TEAM RADIO TRANSCRIPTS & AUDIO PLAYER
+   ============================================================ */
+function fmtAudioTime(s){ if(!isFinite(s)) return '0:00'; const m=Math.floor(s/60), sec=Math.floor(s%60); return m+':'+String(sec).padStart(2,'0'); }
+function renderRadio(){
+  const el = document.getElementById('radioList');
+  if (el.querySelector('audio[data-active="1"]')) return;
+  const radios = radioSnap && radioSnap.team_radio;
+  if (!Array.isArray(radios) || !radios.length){ el.innerHTML = '<div class="empty-hint">No transcripts yet.</div>'; return; }
+
+  const drivers = new Map((radioSnap.drivers||[]).map(d=>[d.driver_number, d]));
+  const filterEl = document.getElementById('radioFilter');
+  const prevFilter = filterEl.value;
+  const known = new Set([...drivers.values()].map(d=>d.name_acronym).filter(Boolean));
+  if (filterEl.dataset.built !== [...known].sort().join(',')){
+    filterEl.innerHTML = '<option value="">All Drivers Comms</option>' + [...known].sort().map(tla=>`<option value="${tla}">${tla}</option>`).join('');
+    filterEl.dataset.built = [...known].sort().join(',');
+    filterEl.value = prevFilter && known.has(prevFilter) ? prevFilter : '';
+  }
+
+  const activeFilter = filterEl.value;
+  let items = radios.slice().reverse();
+  if (activeFilter) items = items.filter(r=>{
+    const d = drivers.get(r.driver_number) || {};
+    return (r.acronym || d.name_acronym) === activeFilter;
+  });
+  items = items.slice(0, 15);
+
+  el.innerHTML = items.map((r, i)=>{
+    const d = drivers.get(r.driver_number) || {};
+    const color = d.team_colour ? '#'+String(d.team_colour).replace('#','') : 'var(--f1-amber)';
+    const tla = r.acronym || d.name_acronym || r.driver_number;
+    const lines = (r.transcript||[]).map(seg =>
+      `<div class="radio-line"><b>${seg.speaker==='driver' ? tla : 'PIT'}</b>${seg.en || seg.es || ''}</div>`
+    ).join('');
+
+    return `<div class="radio-card" style="border-left-color:${color}">
+      <div class="radio-meta">
+        <span class="driver-identity">${teamLogoMarkup(tla)}<span class="radio-tla" style="color:${color}">${tla}</span></span>
+        <span class="radio-time">${r.date ? new Date(r.date).toLocaleTimeString() : ''}</span>
+      </div>
+      ${r.recording_url ? `
+        <div class="radio-player-bar" data-idx="${i}">
+          <button class="radio-play-btn" data-src="${r.recording_url}">▶</button>
+          <div class="radio-track-seek"><div class="radio-track-fill"></div></div>
+          <span style="font-size:10px;color:var(--text-dim);" class="r-dur">0:00</span>
+        </div>` : ''}
+      ${lines || '<div style="font-size:11px;color:var(--text-dim)">Radio packet received</div>'}
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('radioFilter').addEventListener('change', ()=>{ radioDirty = true; });
+const timingSettingsPop = document.getElementById('timingSettingsPop');
+document.getElementById('timingSettingsBtn').addEventListener('click', (event)=>{
+  event.stopPropagation();
+  timingSettingsPop.classList.toggle('open');
+});
+document.getElementById('timingSettingsBtn').addEventListener('pointerdown', event=>event.stopPropagation());
+document.querySelectorAll('[data-timing-key]').forEach(toggle=>{
+  toggle.addEventListener('click', event=>{
+    event.stopPropagation();
+    const key = toggle.dataset.timingKey;
+    timingSettings[key] = !timingSettings[key];
+    toggle.classList.toggle('on', timingSettings[key]);
+    dirty = true;
+  });
+});
+document.getElementById('timingFontSlider').addEventListener('input', event=>{
+  document.getElementById('timingTable').style.fontSize = `${event.target.value}%`;
+});
+const battleSettingsPop = document.getElementById('battleSettingsPop');
+document.getElementById('battleSettingsBtn').addEventListener('click', event=>{
+  event.stopPropagation();
+  battleSettingsPop.classList.toggle('open');
+});
+document.getElementById('battleSettingsBtn').addEventListener('pointerdown', event=>event.stopPropagation());
+document.getElementById('battleSettingSelect').addEventListener('change', event=>{
+  battleState.auto = !event.target.value;
+  battleState.selectedPosition = event.target.value ? Number(event.target.value) : null;
+  document.getElementById('battleAutoCheck').checked = battleState.auto;
+  dirty = true;
+});
+document.getElementById('battleThresholdSlider').addEventListener('input', event=>{
+  battleState.threshold = Number(event.target.value);
+  dirty = true;
+});
+document.getElementById('battleFontSlider').addEventListener('input', event=>{
+  battleState.fontSize = Number(event.target.value);
+  dirty = true;
+});
+document.getElementById('battleAutoCheck').addEventListener('change', event=>{
+  battleState.auto = event.target.checked;
+  if (battleState.auto) battleState.selectedPosition = null;
+  dirty = true;
+});
+document.getElementById('battleBody').addEventListener('change', event=>{
+  if (event.target.id !== 'battleSelect') return;
+  battleState.auto = false;
+  battleState.selectedPosition = event.target.value ? Number(event.target.value) : null;
+  dirty = true;
+});
+const flyingSettingsPop = document.getElementById('flyingSettingsPop');
+document.getElementById('flyingSettingsBtn').addEventListener('click', event=>{
+  event.stopPropagation();
+  flyingSettingsPop.classList.toggle('open');
+});
+document.getElementById('flyingSettingsBtn').addEventListener('pointerdown', event=>event.stopPropagation());
+document.getElementById('flyingDriverSelect').addEventListener('change', event=>{
+  flyingLapState.auto = !event.target.value;
+  flyingLapState.driverNumber = event.target.value || null;
+  document.getElementById('flyingAutoCheck').checked = flyingLapState.auto;
+  dirty = true;
+});
+document.getElementById('flyingAutoCheck').addEventListener('change', event=>{
+  flyingLapState.auto = event.target.checked;
+  if (flyingLapState.auto) flyingLapState.driverNumber = null;
+  dirty = true;
+});
+document.getElementById('flyingFontSlider').addEventListener('input', event=>{
+  flyingLapState.fontSize = Number(event.target.value);
+  dirty = true;
+});
+document.addEventListener('click', event=>{
+  if (!timingSettingsPop.contains(event.target) && event.target.id !== 'timingSettingsBtn') timingSettingsPop.classList.remove('open');
+  if (!battleSettingsPop.contains(event.target) && event.target.id !== 'battleSettingsBtn') battleSettingsPop.classList.remove('open');
+  if (!flyingSettingsPop.contains(event.target) && event.target.id !== 'flyingSettingsBtn') flyingSettingsPop.classList.remove('open');
+});
+document.getElementById('radioList').addEventListener('click', (e)=>{
+  const btn = e.target.closest('.radio-play-btn');
+  const trackSeek = e.target.closest('.radio-track-seek');
+  if (btn){
+    const bar = btn.closest('.radio-player-bar');
+    let audio = bar.querySelector('audio');
+    if (!audio){
+      audio = document.createElement('audio');
+      audio.src = btn.dataset.src; audio.preload = 'metadata';
+      bar.appendChild(audio);
+      audio.addEventListener('timeupdate', ()=>{
+        const fill = bar.querySelector('.radio-track-fill'), durEl = bar.querySelector('.r-dur');
+        if (audio.duration) fill.style.width = (audio.currentTime/audio.duration*100)+'%';
+        durEl.textContent = fmtAudioTime(audio.duration - audio.currentTime || 0);
+      });
+      audio.addEventListener('play', ()=>{ audio.dataset.active='1'; btn.textContent='❚❚'; });
+      audio.addEventListener('pause', ()=>{ audio.dataset.active='0'; btn.textContent='▶'; });
+      audio.addEventListener('ended', ()=>{ audio.dataset.active='0'; btn.textContent='▶'; bar.querySelector('.radio-track-fill').style.width='0%'; });
+    }
+    document.querySelectorAll('#radioList audio').forEach(a=>{ if(a!==audio && !a.paused) a.pause(); });
+    if (audio.paused) audio.play(); else audio.pause();
+  } else if (trackSeek){
+    const audio = trackSeek.closest('.radio-player-bar').querySelector('audio');
+    if (audio && audio.duration){
+      const r = trackSeek.getBoundingClientRect();
+      audio.currentTime = ((e.clientX - r.left) / r.width) * audio.duration;
+    }
+  }
+});
+
+/* ============================================================
+   5. TYRE STRATEGY WIDGET
+   ============================================================ */
+function renderTyreTimeline() {
+  const container = document.getElementById('tyreDriverTimeline');
+  const drivers = getSortedDrivers();
+  const stintSeries = (state.TyreStintSeries && state.TyreStintSeries.Stints) || {};
+
+  let totalRaceLaps = 10;
+  const lc = state.LapCount;
+  if (lc && lc.TotalLaps) totalRaceLaps = lc.TotalLaps;
+  else {
+    const allStints = Object.values(stintSeries).flat();
+    if (allStints.length) totalRaceLaps = Math.max(...allStints.map(s => s.TotalLaps || 10));
+  }
+
+  if (!drivers.length) {
+    container.innerHTML = `<div class="empty-hint">Waiting for stint data…</div>`;
+    return;
+  }
+
+  container.innerHTML = drivers.map(d => {
+    const stints = stintSeries[d.racingNumber] || [];
+    const segmentsHtml = stints.map(stint => {
+      const laps = (stint.TotalLaps - stint.StartLaps) || 1;
+      const widthPct = Math.max(4, (laps / totalRaceLaps) * 100);
+      const comp = (stint.Compound || 'UNKNOWN').toUpperCase();
+      const style = TYRE_STYLES[comp] || { code: '?', cls: 'tyre-medium' };
+
+      return `
+        <div class="stint-segment" style="width:${widthPct}%;">
+          <div class="stint-line ${style.cls}"></div>
+          <div class="stint-pill ${style.cls}">
+            ${tyreIconMarkup(style)}
+            <span>${laps}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="driver-timeline-row clickable" onclick="handleDriverClick('${d.racingNumber}')">
+        <div class="dt-info">
+          <span class="dt-pos">${d.position}</span>
+          ${driverIdentityMarkup(d.tla, d.racingNumber, `#${d.teamColour}`)}
+        </div>
+        <div class="stint-timeline">
+          ${segmentsHtml || `<div style="width:100%;height:2px;background:rgba(255,255,255,0.06)"></div>`}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+/* ============================================================
+   7. SECTORS & SPEED TRAP WIDGETS
+   ============================================================ */
+function renderSectors(){
+  const rows = getSortedDrivers();
+  const tbl = document.getElementById('sectorsTableBody');
+  if (!rows.length){ tbl.innerHTML = '<tr><td colspan="5" class="empty-hint">Waiting for sector times…</td></tr>'; return; }
+
+  tbl.innerHTML = rows.map(({racingNumber, position, tla, teamColour})=>{
+    const line = (state.TimingData && state.TimingData.Lines && state.TimingData.Lines[racingNumber]) || {};
+    const sectors = Array.isArray(line.Sectors) ? line.Sectors : [];
+    const cell = (s)=>{
+      const v = extractValue(s);
+      const cls = s?.OverallFastest ? 'var(--f1-purple)' : (s?.PersonalFastest ? 'var(--f1-green)' : 'inherit');
+      return `<b style="color:${cls}">${v || '—'}</b>`;
+    };
+
+    return `<tr class="clickable" onclick="handleDriverClick('${racingNumber}')">
+      <td>${position}</td>
+      <td>${driverIdentityMarkup(tla, racingNumber, `#${teamColour}`)}</td>
+      <td>${cell(sectors[0])}</td><td>${cell(sectors[1])}</td><td>${cell(sectors[2])}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderSpeed(){
+  const drivers = state.DriverList || {};
+  const statsLines = (state.TimingStats && state.TimingStats.Lines) || {};
+  const tbl = document.getElementById('speedTableBody');
+
+  const list = Object.keys(statsLines)
+    .filter(n=>n!=='_kf' && statsLines[n].BestSpeeds)
+    .map(num=>({ num, drv: drivers[num]||{}, speeds: statsLines[num].BestSpeeds }))
+    .sort((a,b)=> (parseFloat(extractValue(b.speeds.ST))||0) - (parseFloat(extractValue(a.speeds.ST))||0));
+  
+  if (!list.length){ tbl.innerHTML = '<tr><td colspan="6" class="empty-hint">Waiting for speed trap data…</td></tr>'; return; }
+  
+  tbl.innerHTML = list.map(({num,drv,speeds},i)=>{
+    const color = drv.TeamColour ? '#'+drv.TeamColour.replace('#','') : '#888';
+    const cell = (k)=> {
+      const spd = speeds[k];
+      const val = extractValue(spd);
+      return `<span class="${spd?.OverallFastest ? 'fastest-lap':''}">${val || '—'}</span>`;
+    };
+    return `<tr class="clickable" onclick="handleDriverClick('${num}')">
+      <td>${i+1}</td>
+      <td>${driverIdentityMarkup(drv.Tla || num, num, color)}</td>
+      <td>${cell('I1')}</td><td>${cell('I2')}</td><td>${cell('FL')}</td><td><b>${cell('ST')}</b></td>
+    </tr>`;
+  }).join('');
+}
+
+/* ============================================================
+   8. POSITION DELTA & PITSTOPS WIDGETS
+   ============================================================ */
+function renderPosition(){
+  const rows = getSortedDrivers();
+  const tbl = document.getElementById('positionTableBody');
+  const withDelta = rows.filter(r=>r.startingPosition && parseInt(r.startingPosition,10)>0)
+    .map(r=>({...r, delta: parseInt(r.startingPosition,10) - r.positionNum}))
+    .sort((a,b)=>b.delta-a.delta);
+    
+  if (!withDelta.length){ tbl.innerHTML = '<tr><td colspan="4" class="empty-hint">No grid data yet.</td></tr>'; return; }
+  
+  tbl.innerHTML = withDelta.map(({racingNumber, position, tla, teamColour, startingPosition, delta})=>{
+    const cls = delta>0?'gainer':(delta<0?'loser':'');
+    const arrow = delta>0?'▲':(delta<0?'▼':'—');
+    return `<tr class="clickable" onclick="handleDriverClick('${racingNumber}')">
+      <td>${position}</td>
+      <td>${driverIdentityMarkup(tla, racingNumber, `#${teamColour}`)}</td>
+      <td>${startingPosition}</td>
+      <td class="${cls}"><b>${arrow} ${Math.abs(delta)}</b></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderPitstops(){
+  const rows = getSortedDrivers();
+  const stintSeries = (state.TyreStintSeries && state.TyreStintSeries.Stints) || {};
+  const tbl = document.getElementById('pitstopsTableBody');
+  
+  if (!rows.length){ tbl.innerHTML = '<tr><td colspan="4" class="empty-hint">Waiting for stint data…</td></tr>'; return; }
+  
+  tbl.innerHTML = rows.map(({racingNumber, position, tla, teamColour})=>{
+    const stints = stintSeries[racingNumber] || [];
+    const stops = Math.max(0, stints.length - 1);
+    const current = stints[stints.length-1];
+    const comp = current ? (current.Compound||'UNKNOWN').toUpperCase() : '?';
+    const style = TYRE_STYLES[comp] || { code: '?', cls: 'tyre-medium' };
+    
+    return `<tr class="clickable" onclick="handleDriverClick('${racingNumber}')">
+      <td>${position}</td>
+      <td>${driverIdentityMarkup(tla, racingNumber, `#${teamColour}`)}</td>
+      <td><b>${stops}</b></td>
+      <td>${current ? `${tyreIconMarkup(style)} <span style="font-size:10px;color:var(--text-dim);margin-left:4px;">${current.TotalLaps-current.StartLaps} laps${current.New==='true'?' (New)':''}</span>` : '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ============================================================
+   9. WEATHER & RACE CONTROL WIDGETS
+   ============================================================ */
+function renderWeatherAndRC(){
+  const w = state.WeatherData || {};
+  const wrap = document.getElementById('weatherWrap');
+  const wd = parseFloat(w.WindDirection);
+
+  wrap.innerHTML = `
+    <div class="weather-grid">
+      <div class="weather-tile"><div class="weather-lbl">Air Temp</div><div class="weather-val">${w.AirTemp ?? '—'}°C</div></div>
+      <div class="weather-tile"><div class="weather-lbl">Track Temp</div><div class="weather-val">${w.TrackTemp ?? '—'}°C</div></div>
+      <div class="weather-tile"><div class="weather-lbl">Humidity</div><div class="weather-val">${w.Humidity ?? '—'}%</div></div>
+      <div class="weather-tile"><div class="weather-lbl">Pressure</div><div class="weather-val">${w.Pressure ?? '—'} hPa</div></div>
+      <div class="weather-tile">
+        <div class="weather-lbl">Wind Dir</div>
+        <div class="weather-val" style="font-size:14px; margin-bottom:4px;">${isNaN(wd)?'—':wd+'°'}</div>
+        ${!isNaN(wd)?`<div class="compass"><div class="needle" style="transform:rotate(${wd}deg)"></div></div>`:''}
+      </div>
+      <div class="weather-tile" style="background: ${ (w.Rainfall==='1'||w.Rainfall===1) ? 'rgba(50,215,75,0.1)' : 'rgba(255,255,255,0.03)' };">
+        <div class="weather-lbl">Rainfall</div>
+        <div class="weather-val" style="color: ${ (w.Rainfall==='1'||w.Rainfall===1) ? 'var(--f1-cyan)' : 'inherit' };">${(w.Rainfall==='1'||w.Rainfall===1)?'WET 🌧️':'DRY ☀️'}</div>
+      </div>
+    </div>`;
+
+  const msgs = (state.RaceControlMessages && state.RaceControlMessages.Messages) || [];
+  const rcEl = document.getElementById('rcList');
+  if (!msgs.length){ rcEl.innerHTML = '<div class="empty-hint">No Race Control flags.</div>'; return; }
+
+  const FLAGS = {
+    GREEN:'images/flags/green-flag.svg', CLEAR:'images/flags/green-flag.svg',
+    YELLOW:'images/flags/yellow-flag.svg', 'DOUBLE YELLOW':'images/flags/double-yellow-flag.svg',
+    RED:'images/flags/red-flag.svg', BLUE:'images/flags/blue-flag.svg',
+    CHEQUERED:'images/flags/chequered-flag.svg', 'BLACK AND WHITE':'images/flags/black-and-white-flag.svg'
+  };
+  rcEl.innerHTML = msgs.slice(-15).reverse().map(m=>{
+    const flagInfo = m.Flag ? FLAGS[String(m.Flag).toUpperCase()] : null;
+    return `<div class="rc-ticker-item">
+      ${flagInfo ? `<img class="flag-icon" src="${flagInfo}" alt="${m.Flag}" title="${m.Flag}">` : ''}
+      <div><span style="color:var(--text-dim);font-size:10px;margin-right:6px;">${m.Utc ? new Date(m.Utc).toLocaleTimeString() : ''}</span>${m.Message||''}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ============================================================
+   STATUS BAR UPDATE
+   ============================================================ */
+let lastAtmosphereStatus = '';
+function updateTrackStatusAtmosphere(message, sessionStatus, statusCode){
+  const normalized = String(message || '').toLowerCase();
+  let atmosphere = 'status-neutral';
+
+  if (String(statusCode) === '1' || sessionStatus === 'Finished' || normalized.includes('chequered')) atmosphere = 'status-clear';
+  else if (String(statusCode) === '2') atmosphere = 'status-yellow';
+  else if (String(statusCode) === '4' || String(statusCode) === '6' || String(statusCode) === '7') atmosphere = 'status-safety';
+  else if (String(statusCode) === '5') atmosphere = 'status-red';
+  else if (normalized === 'allclear' || normalized.includes('clear') || normalized.includes('green')) atmosphere = 'status-clear';
+  else if (normalized === 'yellow' || normalized.includes('yellow')) atmosphere = 'status-yellow';
+  else if (normalized === 'scdeployed' || normalized.includes('safety')) atmosphere = 'status-safety';
+  else if (normalized === 'vscdeployed' || normalized.includes('virtual')) atmosphere = 'status-safety';
+  else if (normalized === 'red' || normalized.includes('red')) atmosphere = 'status-red';
+
+  if (atmosphere === lastAtmosphereStatus) return;
+  lastAtmosphereStatus = atmosphere;
+  document.body.classList.remove('status-neutral', 'status-clear', 'status-yellow', 'status-safety', 'status-red');
+  document.body.classList.add(atmosphere);
+}
+
+function renderStatusBar() {
+  const w = state.WeatherData || {};
+  const rain = (w.Rainfall === '1' || w.Rainfall === 1);
+  document.getElementById('wxIcon').textContent = rain ? '🌧️' : '☀️';
+  document.getElementById('wAir').textContent = (w.AirTemp ?? '—');
+  document.getElementById('wTrack').textContent = (w.TrackTemp ?? '—');
+  document.getElementById('wRain').textContent = rain ? 'WET' : '0%';
+
+  const lc = state.LapCount || {};
+  document.getElementById('wLap').textContent = (lc.CurrentLap != null && lc.TotalLaps != null) ? `${lc.CurrentLap}/${lc.TotalLaps}` : '—/—';
+
+  const si = state.SessionInfo || {};
+  document.getElementById('sessionName').textContent = [si.Meeting && si.Meeting.Name, si.Name].filter(Boolean).join(' • ') || 'FORMULA 1 LIVE';
+
+  const ts = state.TrackStatus || {};
+  const msg = String(ts.Message || '').toLowerCase();
+  updateTrackStatusAtmosphere(ts.Message, state.SessionStatus, ts.Status);
+  let dotColor = 'var(--f1-green)', text = ts.Message || 'Live';
+
+  if (state.SessionStatus === 'Finished' || msg.includes('chequered')) { dotColor = '#fff'; text = 'Chequered Flag'; }
+  else if (msg.includes('virtual')) { dotColor = 'var(--f1-amber)'; text = 'VSC'; }
+  else if (msg.includes('safety')) { dotColor = 'var(--f1-amber)'; text = 'Safety Car'; }
+  else if (msg.includes('red')) { dotColor = 'var(--f1-red)'; text = 'Red Flag'; }
+  else if (msg.includes('yellow')) { dotColor = 'var(--f1-amber)'; text = 'Yellow Flag'; }
+
+  const dot = document.getElementById('statusDot');
+  dot.style.background = dotColor; dot.style.boxShadow = `0 0 8px ${dotColor}`;
+  document.getElementById('statusText').textContent = text.toUpperCase();
+
+  const windDir = parseFloat(w.WindDirection || 0);
+  document.getElementById('mapWindArrow').style.transform = `rotate(${windDir - 90}deg)`;
+  document.getElementById('mapWindVal').textContent = `${w.WindSpeed || 0} kph`;
+  document.getElementById('mapTrackTempVal').textContent = `${w.TrackTemp ?? '—'}°C`;
+  document.getElementById('mapRainVal').textContent = rain ? 'WET' : '0%';
+}
+
+/* ============================================================
+   MAIN RENDER LOOP
+   ============================================================ */
+let lastFullRender = 0;
+function renderLoop(now) {
+  if (dirty && now - lastFullRender > 350) {
+    dirty = false;
+    lastFullRender = now;
+    renderStatusBar();
+    renderTimingTower();
+    renderBattleWidget();
+    renderFlyingLapWidget();
+    renderTelemetry();
+    renderSectors();
+    renderSpeed();
+    renderPosition();
+    renderPitstops();
+    renderWeatherAndRC();
+    renderTyreTimeline();
+  }
+  renderClock();
+  if (radioDirty && now - lastFullRender > 400) {
+    radioDirty = false;
+    renderRadio();
+  }
+  renderMapCars();
+  requestAnimationFrame(renderLoop);
+}
+
+connectMain();
+connectTiming();
+connectF1Pedia();
+connectRadio();
+requestAnimationFrame(renderLoop);
+</script>
+</body>
+</html>

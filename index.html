@@ -79,12 +79,39 @@
 	.destination p { max-width: 285px; margin: 0; color: var(--text-muted); line-height: 1.5; }
 	.destination-arrow { position: absolute; right: 24px; bottom: 23px; color: var(--card-accent); font-size: 20px; }
 
+	.split { display: grid; grid-template-rows: 1fr 1fr; min-height: 230px; background: var(--panel-bg); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.03) inset; overflow: hidden; }
+	.half { position: relative; display: flex; align-items: center; gap: 16px; padding: 18px 24px; color: var(--text-main); text-decoration: none; transition: background .18s ease, box-shadow .18s ease; }
+	.half + .half { border-top: 1px solid rgba(255, 255, 255, 0.1); }
+	.half:hover, .half:focus-visible { background: var(--panel-bg-hover); box-shadow: inset 3px 0 0 var(--card-accent); outline: none; }
+	.half.schedule { --card-accent: var(--orange); }
+	.half.kin { --card-accent: var(--red); }
+	.half .destination-icon { margin: 0; flex: none; }
+	.half .destination-arrow { position: static; margin-left: auto; }
+	.half h2 { margin: 0 0 4px; font-size: 18px; }
+	.half p { margin: 0; color: var(--text-muted); line-height: 1.45; }
+
+	.series-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+	.series { --card-accent: var(--blue); display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--panel-bg); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: var(--text-main); text-decoration: none; transition: transform .18s ease, background .18s ease, border-color .18s ease; }
+	.series:hover, .series:focus-visible { background: var(--panel-bg-hover); border-color: var(--card-accent); transform: translateY(-2px); outline: none; }
+	.series.f2 { --card-accent: var(--blue); }
+	.series.f3 { --card-accent: var(--red); }
+	.series.fa { --card-accent: #ec4899; }
+	.series.wec { --card-accent: #0ea5e9; }
+	.series-img { height: 26px; width: auto; max-width: 56px; flex: none; object-fit: contain; }
+	.series-logo { width: 38px; height: 26px; flex: none; }
+	.series-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+	.series-text b { font-size: 12px; font-weight: 600; }
+	.series-text span { color: var(--text-dim); font-size: 10px; }
+	.series-arrow { margin-left: auto; color: var(--card-accent); font-size: 15px; }
+
+	@media (max-width: 900px) { .series-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 	.footer-note { margin-top: 30px; color: var(--text-dim); font-size: 11px; }
 	@media (max-width: 620px) {
 		.content { padding: 32px 18px 40px; }
 		.destination-grid { grid-template-columns: 1fr; margin-top: 28px; }
 		.destination { min-height: 200px; }
 		.header-status { display: none; }
+		.series-grid { grid-template-columns: 1fr; }
 	}
 </style>
 </head>
@@ -114,15 +141,52 @@
 					<span class="destination-arrow" aria-hidden="true">&#8594;</span>
 				</a>
 
-				<a class="destination schedule" href="calendar.html">
-					<div class="destination-icon" aria-hidden="true">
-						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="5" width="17" height="15" rx="2" /><path d="M7 3.5v3M17 3.5v3M3.5 9h17M8 13h3M13 13h3M8 16h3" stroke-linecap="round" /></svg>
-					</div>
-					<h2>Race schedule</h2>
-					<p>Browse every round, circuit, date, and session across the current F1 season.</p>
-					<span class="destination-arrow" aria-hidden="true">&#8594;</span>
-				</a>
+				<div class="split">
+					<a class="half schedule" href="calendar.html">
+						<div class="destination-icon" aria-hidden="true">
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="5" width="17" height="15" rx="2" /><path d="M7 3.5v3M17 3.5v3M3.5 9h17M8 13h3M13 13h3M8 16h3" stroke-linecap="round" /></svg>
+						</div>
+						<div>
+							<h2>Race schedule</h2>
+							<p>Browse every round, circuit, date, and session across the season.</p>
+						</div>
+						<span class="destination-arrow" aria-hidden="true">&#8594;</span>
+					</a>
+					<a class="half kin" href="kinanalysis.html">
+						<div class="destination-icon" aria-hidden="true">
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3.5 19.5h17M4 15l4-5 3 3 4-7 5 6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+						</div>
+						<div>
+							<h2>KinAnalysis</h2>
+							<p>Compare lap times, telemetry and driver deltas from any session.</p>
+						</div>
+						<span class="destination-arrow" aria-hidden="true">&#8594;</span>
+					</a>
+				</div>
 			</nav>
+
+			<div class="series-grid">
+			<a class="series f2" href="f2-timing.html">
+				<svg class="series-logo" viewBox="0 0 38 26" aria-hidden="true"><path d="M4 0h34L34 26H0z" fill="var(--card-accent)" /><text x="19" y="18" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-style="italic" font-size="14" fill="#fff">F2</text></svg>
+				<span class="series-text"><b>F2 live timing</b><span>FIA Formula 2</span></span>
+				<span class="series-arrow" aria-hidden="true">&#8594;</span>
+			</a>
+			<a class="series f3" href="f3-timing.html">
+				<svg class="series-logo" viewBox="0 0 38 26" aria-hidden="true"><path d="M4 0h34L34 26H0z" fill="var(--card-accent)" /><text x="19" y="18" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-style="italic" font-size="14" fill="#fff">F3</text></svg>
+				<span class="series-text"><b>F3 live timing</b><span>FIA Formula 3</span></span>
+				<span class="series-arrow" aria-hidden="true">&#8594;</span>
+			</a>
+				<a class="series fa" href="f1academy-timing.html">
+					<img class="series-img" src="https://www.f1academy.com/livetiming/img/fa/f1-academy.svg" alt="" onerror="this.style.display='none'" />
+					<span class="series-text"><b>F1 Academy live timing</b><span>F1 Academy</span></span>
+					<span class="series-arrow" aria-hidden="true">&#8594;</span>
+				</a>
+				<a class="series wec" href="wec.html">
+					<svg class="series-logo" viewBox="0 0 38 26" aria-hidden="true"><path d="M4 0h34L34 26H0z" fill="var(--card-accent)" /><text x="19" y="17.5" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-style="italic" font-size="11" fill="#fff">WEC</text></svg>
+					<span class="series-text"><b>WEC live timing</b><span>FIA World Endurance</span></span>
+					<span class="series-arrow" aria-hidden="true">&#8594;</span>
+				</a>
+			</div>
 
 			<p class="footer-note">Select a destination to get started.</p>
 		</section>

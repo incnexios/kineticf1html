@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kinetic F3 Live Timing</title>
+<style>
+	:root {
+		--bg-dark: #0a0a0c; --panel-bg: rgba(22,22,26,.78);
+		--text-main: #f3f4f6; --text-muted: #9ca3af; --text-dim: #6b7280;
+		--green: #10b981; --blue: #3b82f6; --orange: #f59e0b; --red: #ef4444; --purple: #a855f7;
+	}
+	* { box-sizing: border-box; }
+	html, body { min-height: 100%; margin: 0; }
+	body {
+		background-color: var(--bg-dark);
+		background-image: radial-gradient(circle at 15% 10%, rgba(59,130,246,.08), transparent 34%), radial-gradient(circle at 85% 90%, rgba(16,185,129,.05), transparent 36%), linear-gradient(145deg,#111216 0%,#050507 72%);
+		color: var(--text-main);
+		font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+		font-size: 12px;
+	}
+	.window { min-height: 100vh; display: flex; flex-direction: column; }
+	.header { background: rgba(26,26,26,.94); border-bottom: 1px solid #333; padding: 10px 15px; display: flex; align-items: center; }
+	.mac-dots span { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; }
+	.mac-dots .red { background: #ff5f56; } .mac-dots .yellow { background: #ffbd2e; } .mac-dots .green { background: #27c93f; }
+	.title-bar { margin-left: 15px; display: flex; gap: 15px; align-items: center; color: var(--text-muted); }
+	.title-bar b { color: var(--text-main); font-weight: 600; }
+	.title-bar a { color: var(--text-muted); text-decoration: none; }
+	.title-bar a:hover { color: var(--text-main); }
+	.header-status { margin-left: auto; display: flex; align-items: center; gap: 7px; color: var(--text-dim); font-size: 10px; }
+	.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--orange); box-shadow: 0 0 8px rgba(245,158,11,.6); }
+	.status-dot.ok { background: var(--green); box-shadow: 0 0 8px rgba(16,185,129,.6); }
+	.status-dot.bad { background: var(--red); box-shadow: 0 0 8px rgba(239,68,68,.6); }
+
+	.content { width: min(1100px,100%); margin: 0 auto; padding: 28px 20px 48px; }
+	.eyebrow { color: var(--blue); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+	h1 { margin: 8px 0 6px; font-size: clamp(26px,4.5vw,40px); letter-spacing: -.04em; line-height: 1.05; }
+	.sub { margin: 0 0 20px; color: var(--text-muted); font-size: 13px; }
+
+	.panel { background: var(--panel-bg); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.03) inset; overflow: hidden; }
+	.panel + .panel { margin-top: 16px; }
+	.panel-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,.08); color: var(--text-muted); }
+	.panel-head b { color: var(--text-main); font-size: 13px; }
+	.panel-head button { background: transparent; color: var(--text-muted); border: 1px solid rgba(255,255,255,.14); border-radius: 6px; padding: 4px 10px; font: inherit; cursor: pointer; }
+	.panel-head button:hover, .panel-head button:focus-visible { color: var(--text-main); border-color: var(--blue); outline: none; }
+	.scroll { overflow-x: auto; }
+	table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+	th { text-align: left; padding: 9px 14px; color: var(--text-dim); font-weight: 600; font-size: 10px; white-space: nowrap; }
+	td { padding: 9px 14px; border-top: 1px solid rgba(255,255,255,.05); white-space: nowrap; }
+	tbody tr:hover { background: rgba(255,255,255,.03); }
+	td.pos { font-weight: 700; width: 44px; }
+	td.drv { font-weight: 600; }
+	td.no { color: var(--blue); }
+	td.mut { color: var(--text-muted); }
+	td.best { color: var(--purple); }
+	.empty { padding: 36px 20px; text-align: center; color: var(--text-muted); line-height: 1.6; }
+	.empty small { color: var(--text-dim); }
+	#raw { display: none; }
+	#raw.open { display: block; }
+	#rawlog { margin: 0; padding: 14px 16px; max-height: 320px; overflow: auto; color: var(--text-muted); font: 11px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-all; }
+	#topics { padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,.08); color: var(--text-dim); }
+	.kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1px; background: rgba(255,255,255,.05); }
+	.kv div { background: var(--panel-bg); padding: 9px 14px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+	.kv small { color: var(--text-dim); font-size: 10px; } .kv span { overflow-wrap: anywhere; }
+	.comm { list-style: none; margin: 0; padding: 0; max-height: 360px; overflow: auto; }
+	.comm li { padding: 10px 16px; border-top: 1px solid rgba(255,255,255,.05); line-height: 1.5; }
+	.comm li:first-child { border-top: 0; }
+	@media (max-width: 620px) { .header-status { display: none; } .content { padding: 20px 12px 36px; } }
+</style>
+</head>
+<body>
+<main class="window">
+	<header class="header">
+		<div class="mac-dots" aria-hidden="true"><span class="red"></span><span class="yellow"></span><span class="green"></span></div>
+		<div class="title-bar"><b>Kinetic F1</b><a href="index.html">Race control</a><span>F3 live timing</span></div>
+		<div class="header-status"><span class="status-dot" id="dot"></span><span id="status">Connecting</span></div>
+	</header>
+
+	<section class="content">
+		<div class="eyebrow">Kinetic F1 / F3</div>
+		<h1>FIA Formula 3 live timing</h1>
+		<p class="sub" id="meta">Waiting for the first message from the timing server.</p>
+
+		<div class="panel">
+			<div class="panel-head"><b>Classification</b><span id="count">0 messages</span></div>
+			<div class="scroll">
+				<table>
+					<thead><tr><th>Pos</th><th>No</th><th>Driver</th><th>Team</th><th>Gap</th><th>Interval</th><th>Last lap</th><th>Best lap</th><th>Laps</th></tr></thead>
+					<tbody id="rows"></tbody>
+				</table>
+			</div>
+			<div class="empty" id="empty">Waiting for timing data.<br /><small>The table fills in as soon as the session sends positions.</small></div>
+		</div>
+
+		<div class="panel">
+			<div class="panel-head"><b>Session</b><span>Weather, status and race details</span></div>
+			<div class="kv" id="kv"><div><small>Status</small><span>Waiting for data</span></div></div>
+		</div>
+
+		<div class="panel">
+			<div class="panel-head"><b>Commentary</b><span id="ccount"></span></div>
+			<ul class="comm" id="comm"><li style="color:var(--text-dim)">Commentary appears here during a session.</li></ul>
+		</div>
+
+		<div class="panel">
+			<div class="panel-head"><b>Raw feed</b><span><button id="copy" type="button">Copy sample</button> <button id="toggle" type="button">Show</button></span></div>
+			<div id="raw"><div id="topics"></div><pre id="rawlog"></pre></div>
+		</div>
+	</section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/signalr.js/2.4.1/jquery.signalR.min.js"></script>
+<script>
+(function () {
+	var HUB_URL = "https://ltss.fiaformula2.com/streaming"; // F3 and F2/F3 share this server
+	var $ = jQuery, state = {}, log = [], topics = {}, total = 0, queued = false;
+	var $dot = $("#dot"), $status = $("#status");
+
+	function merge(t, s) {
+		if (s && typeof s === "object") {
+			if (!t || typeof t !== "object") t = Array.isArray(s) ? [] : {};
+			for (var k in s) t[k] = merge(t[k], s[k]);
+			return t;
+		}
+		return s;
+	}
+	function parse(x) { if (typeof x === "string" && /^\s*[\[{]/.test(x)) { try { return JSON.parse(x); } catch (e) {} } return x; }
+	function handle(topic, data) {
+		total++; topic = String(topic); topics[topic] = (topics[topic] || 0) + 1;
+		data = parse(data);
+		log.push(new Date().toTimeString().slice(0, 8) + " " + topic + " " + JSON.stringify(data).slice(0, 500));
+		if (log.length > 80) log.shift();
+		state[topic] = merge(state[topic], data);
+		schedule();
+	}
+
+	var conn = $.hubConnection(HUB_URL, { useDefaultPath: false });
+	var proxy = conn.createHubProxy("streaming");
+	proxy.on("feed", function () {}); // registers the hub subscription; all messages are handled below
+	conn.received(function (m) {
+		if (m && m.M && m.A) {
+			var a = m.A;
+			if (a.length > 1 && typeof a[0] === "string") handle(a[0], a[1]);
+			else handle(m.M, a.length === 1 ? a[0] : a);
+		} else if (m && m.R && typeof m.R === "object") { for (var k in m.R) handle(k, m.R[k]); }
+	});
+	conn.stateChanged(function (c) {
+		var map = { 0: ["Connecting", ""], 1: ["Live", "ok"], 2: ["Reconnecting", ""], 4: ["Disconnected", "bad"] }[c.newState] || ["", ""];
+		$status.text(map[0]); $dot.attr("class", "status-dot " + map[1]);
+	});
+	conn.error(function (e) { $status.text("Error: " + (e && e.message || "unknown")); $dot.attr("class", "status-dot bad"); });
+	var SERIES = "F3";
+	var FEEDS = ["data", "weather", "status", "time", "commentary", "racedetails"];
+	var SNAPSHOT = ["data", "statsfeed", "weatherfeed", "sessionfeed", "commentaryfeed", "racedetailsfeed"]; // verify in the official GetData2 call
+	function call(name, args) {
+		return proxy.invoke.apply(proxy, [name].concat(args)).fail(function (e) { log.push(name + " failed: " + e.message); schedule(); });
+	}
+	conn.start({ transport: "webSockets", withCredentials: false }).done(function () {
+		call("JoinFeeds", [SERIES, FEEDS]);
+		call("GetData2", [SERIES, SNAPSHOT]);
+	});
+
+	var ALIASES = {
+		pos: ["position", "pos", "racepos", "currentposition", "rank"],
+		no: ["racingnumber", "no", "carnumber", "number", "car", "bib"],
+		drv: ["tla", "shortname", "abbreviation", "drivername", "name", "driver", "lastname", "fullname"],
+		team: ["teamname", "team"],
+		gap: ["gaptoleader", "gap", "gapformatted"],
+		int: ["intervaltopositionahead", "interval", "int"],
+		last: ["lastlaptime", "lastlap", "last"],
+		best: ["bestlaptime", "bestlap", "best"],
+		laps: ["numberoflaps", "laps", "lapcount", "lap"]
+	};
+	function lk(o) { var m = {}; for (var k in o) m[k.toLowerCase()] = o[k]; return m; }
+	function val(x) {
+		if (x == null) return "";
+		if (typeof x === "object") { var ks = ["Value", "value", "Time", "time", "Text", "text"]; for (var i = 0; i < ks.length; i++) if (ks[i] in x) return val(x[ks[i]]); return ""; }
+		return x;
+	}
+	function pick(m, names) { for (var i = 0; i < names.length; i++) { var v = val(m[names[i]]); if (v !== "") return v; } return ""; }
+	function findRows(o, d) {
+		if (!o || typeof o !== "object" || d > 5) return null;
+		var kids = Object.keys(o).filter(function (k) { return o[k] && typeof o[k] === "object"; });
+		if (kids.length >= 3) {
+			var hits = kids.filter(function (k) { var m = lk(o[k]); return ALIASES.pos.some(function (p) { return p in m; }); });
+			if (hits.length >= kids.length * 0.6) return kids.map(function (k) { var r = lk(o[k]); r._k = k; return r; });
+		}
+		for (var i = 0; i < kids.length; i++) { var r = findRows(o[kids[i]], d + 1); if (r) return r; }
+		return null;
+	}
+
+	var NAME_RE = /^[A-Z]\.\s?[A-Z][A-Z'\u2019\-]*(?:[ \-][A-Z'\u2019\-]+)*$/;
+	function nameOf(c) {
+		if (typeof c === "string") return NAME_RE.test(c) ? c : null;
+		if (!c || typeof c !== "object") return null;
+		for (var k in c) if (typeof c[k] === "string" && NAME_RE.test(c[k])) return c[k];
+		return null;
+	}
+	function normRow(c, i, key) {
+		var n = nameOf(c), r = { drivername: n };
+		if (Array.isArray(c)) {
+			var ni = c.indexOf(n), rest = c.slice(ni + 1).map(val);
+			r.position = ni >= 2 ? val(c[0]) : i + 1; r.racingnumber = ni >= 1 ? val(c[ni - 1]) : "";
+			r.gap = rest[0]; r.interval = rest[1]; r.lastlap = rest[2]; r.bestlap = rest[3]; r.laps = rest[4];
+		} else if (c && typeof c === "object") {
+			var m = lk(c); for (var k in m) r[k] = m[k];
+			r.drivername = n; if (r.position === undefined && r.pos === undefined) r.position = i + 1;
+			if (!pick(m, ALIASES.no) && /^\d+$/.test(key)) r.racingnumber = key;
+		}
+		return r;
+	}
+	function findNamed(o, d) {
+		if (!o || typeof o !== "object" || d > 6) return null;
+		var ks = Object.keys(o), hits = ks.filter(function (k) { return nameOf(o[k]); });
+		if (hits.length >= 3) return hits.map(function (k, i) { return normRow(o[k], i, k); });
+		for (var i = 0; i < ks.length; i++) { var r = findNamed(o[ks[i]], d + 1); if (r) return r; }
+		return null;
+	}
+	function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+
+
+	function text(it) {
+		if (typeof it === "string") return it;
+		if (Array.isArray(it)) { for (var i = 0; i < it.length; i++) if (typeof it[i] === "string" && it[i].length > 3) return it[i]; return ""; }
+		if (it && typeof it === "object") { var m = lk(it); return String(m.text || m.comment || m.message || m.commentary || ""); }
+		return "";
+	}
+	function flat(o, p, out, d) {
+		if (out.length > 40 || d > 3) return;
+		if (o && typeof o === "object") { for (var k in o) flat(o[k], p ? p + " / " + k : k, out, d + 1); }
+		else if (o !== "" && o != null) out.push([p, o]);
+	}
+	function extras() {
+		var items = [];
+		Object.keys(state).forEach(function (t) {
+			if (/commentary/i.test(t)) { var l = state[t]; l = Array.isArray(l) ? l : Object.keys(l || {}).map(function (k) { return l[k]; }); items = items.concat(l.map(text).filter(Boolean)); }
+		});
+		if (items.length) { $("#ccount").text(items.length + " entries"); $("#comm").html(items.slice(-40).reverse().map(function (t) { return "<li>" + esc(t) + "</li>"; }).join("")); }
+		var kv = [];
+		Object.keys(state).forEach(function (t) { if (/weather|status|time|racedetails|session/i.test(t) && !/commentary/i.test(t)) flat(state[t], t, kv, 0); });
+		if (kv.length) $("#kv").html(kv.map(function (e) { return "<div><small>" + esc(e[0]) + "</small><span>" + esc(e[1]) + "</span></div>"; }).join(""));
+	}
+	$("#copy").on("click", function () {
+		var o = {}; Object.keys(state).forEach(function (t) { o[t] = JSON.parse(JSON.stringify(state[t], function (k, v) { return v; })); });
+		var txt = JSON.stringify(o).slice(0, 12000), b = $(this);
+		(navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(function () { b.text("Copied"); }, function () { $("#raw").addClass("open"); $("#rawlog").text(txt); });
+	});
+
+	function schedule() { if (!queued) { queued = true; setTimeout(render, 250); } }
+	function render() {
+		queued = false;
+		$("#count").text(total + " messages");
+		$("#topics").text(Object.keys(topics).map(function (t) { return t + " ×" + topics[t]; }).join("   "));
+		$("#rawlog").text(log.join("\n"));
+		extras();
+		var rows = findNamed(state, 0) || findRows(state, 0);
+		if (!rows) {
+			$("#rows").empty();
+			$("#empty").show().html(total ? "Receiving data, but no classification table was recognised yet.<br /><small>Open the raw feed below to see the message format.</small>" : "Waiting for timing data.<br /><small>The table fills in as soon as the session sends positions.</small>");
+			return;
+		}
+		rows.sort(function (a, b) { return (parseInt(pick(a, ALIASES.pos), 10) || 99) - (parseInt(pick(b, ALIASES.pos), 10) || 99); });
+		$("#empty").hide();
+		$("#rows").html(rows.map(function (r) {
+			var c = function (k) { return esc(pick(r, ALIASES[k]) || "–"); };
+			return '<tr><td class="pos">' + c("pos") + '</td><td class="no">' + c("no") + '</td><td class="drv">' + (pick(r, ALIASES.drv) ? c("drv") : esc(r._k)) + '</td><td class="mut">' + c("team") + '</td><td>' + c("gap") + '</td><td class="mut">' + c("int") + '</td><td>' + c("last") + '</td><td class="best">' + c("best") + '</td><td class="mut">' + c("laps") + "</td></tr>";
+		}).join(""));
+		$("#meta").text(rows.length + " cars on track");
+	}
+
+	$("#toggle").on("click", function () { var o = $("#raw").toggleClass("open").hasClass("open"); $(this).text(o ? "Hide" : "Show"); });
+})();
+</script>
+</body>
+</html>

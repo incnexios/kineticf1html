@@ -1269,7 +1269,7 @@ const TM=(()=>{
     if(typeof x!=='number'||typeof y!=='number'||!isFinite(t))return;
     const c=src.cars[n]||(src.cars[n]={b:[],last:0});
     if(t<=c.last)return;c.last=t;c.b.push({t,x,y});if(c.b.length>80)c.b.shift();
-    if(fb)trailPush(n,x,y);
+    if(fb){trailPush(n,x,y);gpsRec(n,x,y)}
   }
   function at(c,rt){
     const b=c.b,n=b.length;if(!n)return null;if(n===1||rt<=b[0].t)return b[0];
@@ -1319,8 +1319,73 @@ const TM=(()=>{
     if(on){tCnt=tPos=0;tB=null;for(const k in SRC)for(const n in SRC[k].cars)SRC[k].cars[n].b.forEach(s=>trailPush(n,s.x,s.y))}
   }
 
+  /* ---- no MultiViewer data for this circuit: trace one lap from live GPS and use it as the circuit ---- */
+  const gl={};
+  const gpsSave=(k,x,y)=>{try{localStorage.setItem('gpslap-'+k,JSON.stringify({x,y}))}catch{}};
+  const gpsLoad=k=>{try{const d=JSON.parse(localStorage.getItem('gpslap-'+k));return d&&d.x&&d.x.length>100?d:null}catch{return null}};
+  function gpsToCircuit(lp){
+    const tot=lp[lp.length-1][2]-lp[0][2],M=500,xs=[],ys=[];let k=1;
+    for(let i=0;i<M;i++){const t=lp[0][2]+tot*i/M;while(k<lp.length-1&&lp[k][2]<t)k++;
+      const a=lp[k][2]-lp[k-1][2]||1,f=(t-lp[k-1][2])/a;xs.push(lp[k-1][0]+(lp[k][0]-lp[k-1][0])*f);ys.push(lp[k-1][1]+(lp[k][1]-lp[k-1][1])*f)}
+    for(let pass=0;pass<3;pass++){const sx=xs.slice(),sy=ys.slice();for(let i=0;i<M;i++){const a=(i+M-1)%M,b=(i+1)%M;xs[i]=(sx[a]+sx[i]*2+sx[b])/4;ys[i]=(sy[a]+sy[i]*2+sy[b])/4}}
+    const rx=xs.map(Math.round),ry=ys.map(Math.round);
+    return{x:rx,y:ry}
+  }
+  function gpsRec(n,x,y){
+    if(!fb||T.ready)return;
+    let pit=false;try{pit=info(n).pit}catch{}
+    const g=gl[n]||(gl[n]={p:[],k:0});
+    if(pit){g.p=[];return}
+    const l=g.p[g.p.length-1];let cum=0;
+    if(l){const d=Math.hypot(x-l[0],y-l[1]);if(d<40)return;if(d>3000){g.p=[];}else cum=l[2]+d}
+    g.p.push([x,y,cum]);
+    if(g.p.length<200||++g.k%8)return;
+    const P_=g.p,j=P_.length-1,c=P_[j];let bi=-1,bd=300;
+    for(let i=0;i<j&&c[2]-P_[i][2]>=25000;i++){const d=Math.hypot(c[0]-P_[i][0],c[1]-P_[i][1]);if(d<bd){bd=d;bi=i}}
+    if(bi<0)return;
+    const r=gpsToCircuit(P_.slice(bi,j+1)),rx=r.x,ry=r.y;
+    gpsSave(cs.k,rx,ry);
+    if(build({x:rx,y:ry,rotation:0,corners:[],marshalSectors:[]},cs.k||'gps',cs.sid||''))for(const q in gl)delete gl[q];
+  }
+
+  /* ---- backup source: OpenF1 GPS of one clean past lap at this circuit (same coordinate system as the live feed) ---- */
+  async function of1(key,y0){
+    const B='https://api.openf1.org/v1/',J=async u=>{const r=await fetch(u);if(!r.ok)throw new Error(u.slice(B.length,B.length+20)+' '+r.status);return r.json()};
+    const rank=q=>({Race:0,Qualifying:1,Sprint:2,'Sprint Qualifying':3}[q.session_name]??4),iso=t=>encodeURIComponent(new Date(t).toISOString());
+    for(let y=y0;y>=y0-3;y--){
+      let ss;try{ss=await J(`${B}sessions?circuit_key=${key}&year=${y}`)}catch(e){console.warn('openf1',e.message);continue}
+      ss=(ss||[]).filter(q=>Date.parse(q.date_end)<Date.now()-36e5).sort((a,b)=>rank(a)-rank(b)||Date.parse(b.date_start)-Date.parse(a.date_start)).slice(0,2);
+      for(const q of ss){
+        try{
+          let best=null;
+          for(const ln of [3,5,8,12]){
+            const L=(await J(`${B}laps?session_key=${q.session_key}&lap_number=${ln}`)).filter(l=>l.date_start&&!l.is_pit_out_lap&&l.lap_duration>30&&l.lap_duration<200);
+            L.forEach(l=>{if(!best||l.lap_duration<best.lap_duration)best=l});if(best)break}
+          if(!best)continue;
+          const t0=Date.parse(best.date_start),t1=t0+best.lap_duration*1000;
+          const loc=await J(`${B}location?session_key=${q.session_key}&driver_number=${best.driver_number}&date>=${iso(t0)}&date<${iso(t1)}`);
+          const pts=[];let cum=0;
+          for(const r of loc){if(!r.x&&!r.y)continue;const l=pts[pts.length-1];
+            if(l){const d=Math.hypot(r.x-l[0],r.y-l[1]);if(d<40)continue;cum+=d}pts.push([r.x,r.y,cum])}
+          if(pts.length<100||cum<20000)continue;
+          const c=gpsToCircuit(pts);gpsSave(cs.k,c.x,c.y);
+          if(build({x:c.x,y:c.y,rotation:0,corners:[],marshalSectors:[]},key,cs.sid||''))return true;
+        }catch(e){console.warn('openf1',e.message)}
+      }
+    }
+    return false}
+
+  /* the f1pedia feed gives year+round but no circuit key (and no radio clip to read SessionInfo from) -> ask OpenF1 */
+  async function of1Key(fs){
+    const B='https://api.openf1.org/v1/',J=async u=>{const r=await fetch(u);if(!r.ok)throw new Error(r.status);return r.json()};
+    try{const q=(await J(B+'sessions?session_key=latest'))[0];   // current weekend -> trust the latest session
+      if(q&&q.circuit_key&&(!fs.year||+q.year===+fs.year)&&Date.now()-Date.parse(q.date_end)<4*864e5){cs.year=+q.year;return String(q.circuit_key)}}catch(e){console.warn('[circuit] openf1 latest',e.message)}
+    try{if(fs.year&&fs.round){const m=(await J(B+'meetings?year='+fs.year)).filter(x=>!/test/i.test((x.meeting_name||'')+(x.meeting_official_name||''))).sort((a,b)=>Date.parse(a.date_start)-Date.parse(b.date_start)),x=m[+fs.round-1];
+      if(x&&x.circuit_key){cs.year=+fs.year;return String(x.circuit_key)}}}catch(e){console.warn('[circuit] openf1 meetings',e.message)}
+    return null}
+
   /* ---- circuit map (multiviewer) ---- */
-  const cs={busy:false,next:0};
+  const cs={busy:false,next:0,idle:0};
   const yearGuess=()=>{const y=parseInt(String((state.SessionInfo&&state.SessionInfo.StartDate)||'').slice(0,4));return y>2000?y:new Date().getFullYear()};
   async function ensureCircuit(){
     const fs=(radioSnap&&radioSnap.session)||{};
@@ -1328,8 +1393,16 @@ const TM=(()=>{
     if(T.ready&&((circuitKey&&T.key&&String(circuitKey)!==String(T.key))||(sid&&T.sid&&sid!==T.sid))){T.ready=false;setFb(false);cs.next=0}
     const now=performance.now(),forced=Q.get('circuit');
     if(T.ready||cs.busy||now<cs.next)return;
-    if(!forced&&!circuitKey&&!sid)return;           // nothing to go on yet
-    cs.busy=true;cs.next=now+15000;
+    cs.busy=true;
+    if(!forced&&!circuitKey&&!sid){                 // no SessionInfo from either feed yet
+      if(++cs.idle<3||cs.latest){cs.busy=false;return}   // wait ~10 s for the feeds first (ensureCircuit ticks every 5 s)
+      cs.latest=true;console.info('[circuit] no session info from feeds -> asking OpenF1 for the latest session');
+      try{const a=await(await fetch('https://api.openf1.org/v1/sessions?session_key=latest')).json(),q=a&&a[0];
+        if(q&&q.circuit_key){circuitKey=String(q.circuit_key);cs.year=+q.year;console.info('[circuit] OpenF1 latest session ->',q.circuit_short_name,q.circuit_key,q.year)}}
+      catch(e){console.warn('[circuit] openf1 latest failed',e)}
+      if(!circuitKey){cs.busy=false;return}
+    }
+    cs.next=now+15000;
     try{
       let key=forced||circuitKey;
       if(!key&&sid){try{key=localStorage.getItem('ck-'+sid)}catch{}}
@@ -1337,10 +1410,14 @@ const TM=(()=>{
         const r=((radioSnap&&radioSnap.team_radio)||[]).find(x=>x.recording_url),m=r&&r.recording_url.match(/^(https:\/\/livetiming\.formula1\.com\/static\/.+?\/)TeamRadio\//);
         if(m){const t=await(await fetch(m[1]+'SessionInfo.json')).text();key=JSON.parse(t.replace(/^\uFEFF/,'')).Meeting.Circuit.Key}
       }
-      let ok=false;
+      if(!key){key=await of1Key(fs);console.info('[circuit] key from OpenF1 ->',key)}
+      let ok=false;cs.k=key||sid||'gps';cs.sid=sid;
       if(key){ if(sid){try{localStorage.setItem('ck-'+sid,key)}catch{}}
-        const y0=+fs.year||yearGuess();
-        for(const y of [y0,y0-1,y0-2]){const r=await fetch(`https://api.multiviewer.app/api/v1/circuits/${key}/${y}`);if(r.ok){ok=build(await r.json(),key,sid);break}}}
+        const y0=+fs.year||cs.year||yearGuess();console.info('[circuit] MultiViewer lookup, key',key,'from',y0);
+        for(let y=y0;y>=y0-8&&!ok;y--){try{const r=await fetch(`https://api.multiviewer.app/api/v1/circuits/${key}/${y}`);if(r.ok)ok=build(await r.json(),key,sid)}catch(_){}}}
+      if(!ok){const c=gpsLoad(cs.k);if(c)ok=build({x:c.x,y:c.y,rotation:0,corners:[],marshalSectors:[]},cs.k,sid)}   // lap traced on an earlier visit
+      if(!ok)console.info('[circuit] MultiViewer had nothing for key',key);
+      if(!ok&&key&&cs.of!==cs.k){cs.of=cs.k;try{ok=await of1(key,+fs.year||cs.year||yearGuess())}catch(e){console.warn('openf1',e)}}   // once per circuit per page load (rate limits)
       if(!ok)setFb(true);
     }catch(e){setFb(true)}
     cs.busy=false;
